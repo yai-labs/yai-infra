@@ -10,4 +10,8 @@ jobs:
     with:
       project_owner: yai-labs
       project_number: 5
+      pr_number: ${{ github.event.pull_request.number }}
+      pr_node_id: ${{ github.event.pull_request.node_id }}
+      pr_merged: ${{ github.event.pull_request.merged }}
+      pr_milestone_due_on: ${{ github.event.pull_request.milestone && github.event.pull_request.milestone.due_on || '' }}
     secrets: inherit

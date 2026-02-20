@@ -11,13 +11,25 @@ on:
         required: false
         type: number
         default: 5
+      pr_number:
+        required: true
+        type: number
+      pr_node_id:
+        required: true
+        type: string
+      pr_merged:
+        required: true
+        type: boolean
+      pr_milestone_due_on:
+        required: false
+        type: string
+        default: ""
     secrets:
       project_token:
         required: false
 
 jobs:
   sync-project-item:
-    if: github.event_name == 'pull_request' && github.event.action == 'closed'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -32,15 +44,11 @@ jobs:
         with:
           github-token: ${{ secrets.project_token || secrets.YAI_PROJECT_TOKEN || github.token }}
           script: |
-            const pr = context.payload.pull_request;
-            if (!pr) {
-              core.info("No pull_request payload; skipping.");
-              return;
-            }
-
             const owner = process.env.PROJECT_OWNER;
             const projectNumber = Number(process.env.PROJECT_NUMBER || "5");
-            const merged = !!pr.merged;
+            const prNumber = Number("${{ inputs.pr_number }}");
+            const prNodeId = "${{ inputs.pr_node_id }}";
+            const merged = "${{ inputs.pr_merged }}" === "true";
 
             const projectQuery = `
               query($owner:String!,$number:Int!){
@@ -96,8 +104,6 @@ jobs:
             const gateOpt = gateField
               ? (gateField.options || []).find((o) => o.name === gateName)
               : null;
-            const milestoneDue = pr.milestone?.due_on || null;
-            const targetDate = milestoneDue ? new Date(milestoneDue).toISOString().slice(0, 10) : null;
 
             const prItemQuery = `
               query($prId:ID!){
@@ -114,13 +120,12 @@ jobs:
               }
             `;
 
-            const prNodeId = pr.node_id;
             const prItemRes = await github.graphql(prItemQuery, { prId: prNodeId });
             const items = prItemRes.node?.projectItems?.nodes || [];
             const item = items.find((i) => i.project?.id === project.id);
 
             if (!item) {
-              core.info(`PR #${pr.number} is not present in project ${owner}#${projectNumber}; nothing to sync.`);
+              core.info(`PR #${prNumber} is not present in project ${owner}#${projectNumber}; nothing to sync.`);
               return;
             }
 
@@ -153,6 +158,9 @@ jobs:
               });
             }
 
+            const milestoneDueRaw = "${{ inputs.pr_milestone_due_on }}";
+            const milestoneDue = milestoneDueRaw && milestoneDueRaw !== "null" ? milestoneDueRaw : null;
+            const targetDate = milestoneDue ? new Date(milestoneDue).toISOString().slice(0, 10) : null;
             if (targetDateField && targetDate) {
               await github.graphql(
                 `
@@ -177,5 +185,5 @@ jobs:
             }
 
             core.info(
-              `Updated project item for PR #${pr.number}: Status=Done, Gate Status=${gateName}, Target Date=${targetDate || "unchanged"}.`
+              `Updated project item for PR #${prNumber}: Status=Done, Gate Status=${gateName}, Target Date=${targetDate || "unchanged"}.`
             );
