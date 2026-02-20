@@ -30,7 +30,7 @@ jobs:
           PROJECT_OWNER: ${{ inputs.project_owner }}
           PROJECT_NUMBER: ${{ inputs.project_number }}
         with:
-          github-token: ${{ secrets.project_token != '' && secrets.project_token || github.token }}
+          github-token: ${{ secrets.project_token || secrets.YAI_PROJECT_TOKEN || github.token }}
           script: |
             const pr = context.payload.pull_request;
             if (!pr) {
