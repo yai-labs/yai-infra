@@ -13,3 +13,4 @@
 - [x] Issue cutover (`yai-infra#2-#8`) allineate a `infra-cutover@0.1.0`
 - [x] Issue automazione (`yai-infra#9-#15`) allineate a `infra-automation@0.1.1`
 - [x] PR rollout automazione milestone-tagged (`infra-automation@0.1.1`) in tutti i repo
+- [ ] Issue hardening `yai-infra#17` completata (svuotamento non-core da `yai` verso `yai-infra`)

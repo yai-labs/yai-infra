@@ -1,5 +1,97 @@
 version: 1
 rules:
+  - from: yai/tools/python/yai_tools/
+    to: yai-infra/tools/python/yai_tools/
+    mode: move
+    owner: infra
+    risk: high
+    cutover_step: hardening
+
+  - from: yai/tools/ops/
+    to: yai-infra/tools/ops/
+    mode: move
+    owner: infra
+    risk: medium
+    cutover_step: hardening
+
+  - from: yai/tools/schemas/docs/
+    to: yai-infra/tools/schemas/docs/
+    mode: move
+    owner: infra
+    risk: medium
+    cutover_step: hardening
+
+  - from: yai/docs/dev-guide/
+    to: yai-infra/docs/governance/
+    mode: move
+    doc_class: docs-governance
+    compat_wrapper: true
+    owner: infra
+    risk: medium
+    cutover_step: hardening
+
+  - from: yai/docs/templates/
+    to: yai-infra/docs/governance/templates/
+    mode: move
+    doc_class: docs-governance
+    compat_wrapper: true
+    owner: infra
+    risk: low
+    cutover_step: hardening
+
+  - from: yai/docs/_policy/
+    to: yai-infra/docs/governance/policy/
+    mode: move
+    doc_class: docs-governance
+    compat_wrapper: true
+    owner: infra
+    risk: low
+    cutover_step: hardening
+
+  - from: yai/docs/proof/
+    to: yai-infra/docs/governance/proof/
+    mode: move
+    doc_class: docs-governance
+    compat_wrapper: true
+    owner: infra
+    risk: medium
+    cutover_step: hardening
+
+  - from: yai/tools/bin/yai-pr-body
+    to: yai-infra/tools/bin/yai-pr-body
+    mode: move
+    owner: infra
+    risk: medium
+    cutover_step: hardening
+
+  - from: yai/tools/bin/yai-pr-check
+    to: yai-infra/tools/bin/yai-pr-check
+    mode: move
+    owner: infra
+    risk: medium
+    cutover_step: hardening
+
+  - from: yai/tools/bin/yai-docs-doctor
+    to: yai-infra/tools/bin/yai-docs-doctor
+    mode: move
+    owner: infra
+    risk: medium
+    cutover_step: hardening
+
+  - from: yai/tools/bin/yai-docs-trace-check
+    to: yai-infra/tools/bin/yai-docs-trace-check
+    mode: move
+    owner: infra
+    risk: medium
+    cutover_step: hardening
+
+  - from: yai/tools/bin/yai-proof-check
+    to: yai-infra/tools/bin/yai-proof-check
+    mode: move
+    owner: infra
+    risk: medium
+    cutover_step: hardening
+
   - from: yai/docs/
     to: yai-infra/docs/
     mode: move
