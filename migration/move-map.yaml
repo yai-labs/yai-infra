@@ -1,0 +1,26 @@
+version: 1
+rules:
+  - from: yai/docs/
+    to: yai-infra/docs/
+    mode: move
+    doc_class: docs-governance
+    compat_wrapper: false
+    owner: infra
+    risk: medium
+    cutover_step: cutover
+
+  - from: yai/tools/python/
+    to: yai-infra/tools/python/
+    mode: move
+    owner: infra
+    risk: high
+    cutover_step: cutover
+
+  - from: yai/.github/workflows/
+    to: yai-infra/.github/workflows/
+    mode: deprecate
+    owner: infra
+    risk: high
+    cutover_step: cutover
+
+# TODO: add entries per yai-cli, yai-specs, yai-skin, yai-mind, yai-yx

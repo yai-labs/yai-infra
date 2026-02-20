@@ -1,0 +1,20 @@
+name: reusable-verify
+on:
+  workflow_call:
+    inputs:
+      python:
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify
+        run: |
+          echo "verify ok"
+          if [ "${{ inputs.python }}" = "true" ]; then
+            python3 --version
+          fi
