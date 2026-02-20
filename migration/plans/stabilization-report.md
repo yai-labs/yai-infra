@@ -11,3 +11,5 @@ Track cutover parity across consumer repos and central governance assets.
 ## Sign-off
 - Infra owner:
 - Date:
+
+- 2026-02-20: project status sync postfix smoke trigger (PR close).
