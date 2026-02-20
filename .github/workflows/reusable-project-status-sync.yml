@@ -49,6 +49,10 @@ jobs:
                     id
                     fields(first:50){
                       nodes{
+                        ... on ProjectV2FieldCommon{
+                          id
+                          name
+                        }
                         ... on ProjectV2SingleSelectField{
                           id
                           name
@@ -75,6 +79,7 @@ jobs:
             const fields = project.fields.nodes || [];
             const statusField = fields.find((f) => f?.name === "Status");
             const gateField = fields.find((f) => f?.name === "Gate Status");
+            const targetDateField = fields.find((f) => f?.name === "Target Date");
 
             if (!statusField) {
               core.setFailed("Status field not found in project.");
@@ -91,6 +96,8 @@ jobs:
             const gateOpt = gateField
               ? (gateField.options || []).find((o) => o.name === gateName)
               : null;
+            const milestoneDue = pr.milestone?.due_on || null;
+            const targetDate = milestoneDue ? new Date(milestoneDue).toISOString().slice(0, 10) : null;
 
             const prItemQuery = `
               query($prId:ID!){
@@ -146,4 +153,29 @@ jobs:
               });
             }
 
-            core.info(`Updated project item for PR #${pr.number}: Status=Done, Gate Status=${gateName}.`);
+            if (targetDateField && targetDate) {
+              await github.graphql(
+                `
+                mutation($projectId:ID!,$itemId:ID!,$fieldId:ID!,$date:Date!){
+                  updateProjectV2ItemFieldValue(input:{
+                    projectId:$projectId,
+                    itemId:$itemId,
+                    fieldId:$fieldId,
+                    value:{ date:$date }
+                  }){
+                    projectV2Item{ id }
+                  }
+                }
+                `,
+                {
+                  projectId: project.id,
+                  itemId: item.id,
+                  fieldId: targetDateField.id,
+                  date: targetDate,
+                }
+              );
+            }
+
+            core.info(
+              `Updated project item for PR #${pr.number}: Status=Done, Gate Status=${gateName}, Target Date=${targetDate || "unchanged"}.`
+            );

@@ -1,0 +1,133 @@
+name: issue-project-status-sync
+
+on:
+  issues:
+    types: [opened, reopened, edited, closed, milestoned, demilestoned]
+
+jobs:
+  sync-issue-item:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read
+      projects: write
+    steps:
+      - name: Sync project fields for issue
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.YAI_PROJECT_TOKEN != '' && secrets.YAI_PROJECT_TOKEN || github.token }}
+          script: |
+            const issue = context.payload.issue;
+            if (!issue) return;
+
+            const owner = "yai-labs";
+            const projectNumber = 5;
+            const projectQuery = `
+              query($owner:String!,$number:Int!){
+                organization(login:$owner){
+                  projectV2(number:$number){
+                    id
+                    fields(first:50){
+                      nodes{
+                        ... on ProjectV2FieldCommon{
+                          id
+                          name
+                        }
+                        ... on ProjectV2SingleSelectField{
+                          id
+                          name
+                          options{ id name }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            `;
+
+            const projectRes = await github.graphql(projectQuery, { owner, number: projectNumber });
+            const project = projectRes.organization?.projectV2;
+            if (!project) {
+              core.setFailed(`Project not found: ${owner}#${projectNumber}`);
+              return;
+            }
+
+            const fields = project.fields.nodes || [];
+            const statusField = fields.find((f) => f?.name === "Status");
+            const gateField = fields.find((f) => f?.name === "Gate Status");
+            const targetDateField = fields.find((f) => f?.name === "Target Date");
+            if (!statusField || !gateField) {
+              core.setFailed("Required fields not found (Status/Gate Status).");
+              return;
+            }
+
+            const closed = issue.state === "closed";
+            const statusName = closed ? "Done" : "In Progress";
+            const gateName = closed ? "Passed" : "Running";
+
+            const statusOpt = (statusField.options || []).find((o) => o.name === statusName);
+            const gateOpt = (gateField.options || []).find((o) => o.name === gateName);
+            if (!statusOpt || !gateOpt) {
+              core.setFailed("Required field options missing.");
+              return;
+            }
+
+            const issueNodeQuery = `
+              query($id:ID!){
+                node(id:$id){
+                  ... on Issue{
+                    projectItems(first:50){
+                      nodes{
+                        id
+                        project{ id }
+                      }
+                    }
+                  }
+                }
+              }
+            `;
+            const issueNodeRes = await github.graphql(issueNodeQuery, { id: issue.node_id });
+            const items = issueNodeRes.node?.projectItems?.nodes || [];
+            const item = items.find((i) => i.project?.id === project.id);
+            if (!item) {
+              core.info(`Issue #${issue.number} is not in target project; skipping.`);
+              return;
+            }
+
+            const setSingle = async (fieldId, optionId) =>
+              github.graphql(
+                `
+                mutation($projectId:ID!,$itemId:ID!,$fieldId:ID!,$optionId:String!){
+                  updateProjectV2ItemFieldValue(input:{
+                    projectId:$projectId,
+                    itemId:$itemId,
+                    fieldId:$fieldId,
+                    value:{ singleSelectOptionId:$optionId }
+                  }){ projectV2Item{ id } }
+                }
+                `,
+                { projectId: project.id, itemId: item.id, fieldId, optionId }
+              );
+
+            await setSingle(statusField.id, statusOpt.id);
+            await setSingle(gateField.id, gateOpt.id);
+
+            const due = issue.milestone?.due_on || null;
+            if (targetDateField && due) {
+              const date = new Date(due).toISOString().slice(0, 10);
+              await github.graphql(
+                `
+                mutation($projectId:ID!,$itemId:ID!,$fieldId:ID!,$date:Date!){
+                  updateProjectV2ItemFieldValue(input:{
+                    projectId:$projectId,
+                    itemId:$itemId,
+                    fieldId:$fieldId,
+                    value:{ date:$date }
+                  }){ projectV2Item{ id } }
+                }
+                `,
+                { projectId: project.id, itemId: item.id, fieldId: targetDateField.id, date }
+              );
+            }
+
+            core.info(`Issue #${issue.number} synced: Status=${statusName}, Gate Status=${gateName}.`);
