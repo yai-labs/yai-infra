@@ -1,0 +1,29 @@
+name: reusable-validate-changelog
+
+on:
+  workflow_call:
+    inputs:
+      base_sha:
+        required: true
+        type: string
+      head_sha:
+        required: true
+        type: string
+
+jobs:
+  changelog-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Changelog gate (PR mode)
+        run: |
+          tools/bin/yai-changelog-check --pr --base "${{ inputs.base_sha }}" --head "${{ inputs.head_sha }}"

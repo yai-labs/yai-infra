@@ -1,0 +1,31 @@
+name: reusable-validate-traceability
+
+on:
+  workflow_call:
+    inputs:
+      base_sha:
+        required: true
+        type: string
+      head_sha:
+        required: true
+        type: string
+
+jobs:
+  traceability:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history for diff)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Traceability check (changed docs only)
+        run: |
+          python3 -m pip install --upgrade pip
+          tools/bin/yai-docs-trace-check --changed --base "${{ inputs.base_sha }}" --head "${{ inputs.head_sha }}"
