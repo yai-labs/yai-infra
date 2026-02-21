@@ -87,6 +87,12 @@ jobs:
             const targetDate = targetDateRaw ? new Date(targetDateRaw).toISOString().slice(0, 10) : null;
 
             const track = (() => {
+              const ms = (milestone?.title || "").toLowerCase();
+              const tt = (node.title || "").toLowerCase();
+              const bb = `${tt}\n${ms}`;
+              if (bb.includes("bootstrap")) return "infra-bootstrap";
+              if (bb.includes("infra-cutover") || bb.includes("[cutover]")) return "cutover-wave";
+              if (bb.includes("stabilization")) return "stabilization";
               if (labels.includes("track:infra-bootstrap")) return "infra-bootstrap";
               if (labels.includes("track:cutover-wave")) return "cutover-wave";
               if (labels.includes("track:stabilization")) return "stabilization";

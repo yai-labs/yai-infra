@@ -152,7 +152,11 @@ jobs:
               return true;
             };
 
-            const inferTrack = (labels) => {
+            const inferTrack = (labels, title, milestoneTitle) => {
+              const blob = `${title || ""}\n${milestoneTitle || ""}`.toLowerCase();
+              if (blob.includes("bootstrap")) return "infra-bootstrap";
+              if (blob.includes("infra-cutover") || blob.includes("[cutover]")) return "cutover-wave";
+              if (blob.includes("stabilization")) return "stabilization";
               const s = new Set(labels.map((x) => x.toLowerCase()));
               if (s.has("track:infra-bootstrap")) return "infra-bootstrap";
               if (s.has("track:cutover-wave")) return "cutover-wave";
@@ -268,7 +272,7 @@ jobs:
                 const fromMilestone = (c.milestone?.title || "").match(/\b0\.\d+\.\d+\b/);
                 return fromMilestone ? fromMilestone[0] : DEFAULT_PHASE;
               })();
-              const track = inferTrack(normalized);
+              const track = inferTrack(normalized, c.title, c.milestone?.title || "");
               const status = stateClosed ? "Done" : "In Progress";
               const gate = stateClosed ? (isIssue || merged ? "Passed" : "Failed") : "Running";
               const workType = isIssue ? "Issue" : "PR";
