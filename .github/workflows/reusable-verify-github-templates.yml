@@ -1,0 +1,62 @@
+name: reusable-verify-github-templates
+
+on:
+  workflow_call:
+    inputs:
+      infra_repo:
+        required: false
+        type: string
+        default: yai-labs/yai-infra
+      infra_ref:
+        required: false
+        type: string
+        default: main
+
+jobs:
+  verify-template-sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout consumer repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Checkout infra canonical templates
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.infra_repo }}
+          ref: ${{ inputs.infra_ref }}
+          path: .infra-canonical
+          fetch-depth: 1
+
+      - name: Compare GitHub templates with infra canonical
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          check_path() {
+            local rel="$1"
+            local src=".infra-canonical/${rel}"
+            local dst="${rel}"
+            if [[ ! -e "$src" ]]; then
+              echo "Canonical template path missing in infra: $rel" >&2
+              exit 1
+            fi
+            if [[ ! -e "$dst" ]]; then
+              echo "Consumer template path missing: $rel" >&2
+              exit 1
+            fi
+            if ! diff -ruN "$src" "$dst" > /tmp/template-diff.txt; then
+              echo "Template drift detected for: $rel" >&2
+              cat /tmp/template-diff.txt >&2
+              exit 1
+            fi
+          }
+
+          check_path ".github/ISSUE_TEMPLATE"
+          check_path ".github/PULL_REQUEST_TEMPLATE"
+          check_path ".github/PULL_REQUEST_TEMPLATE.md"
+
+          echo "GitHub templates are aligned with infra canonical."
