@@ -33,10 +33,48 @@ jobs:
             const number = node.number;
             const contentId = node.node_id;
             const labels = (node.labels || []).map((l) => (l.name || "").toLowerCase());
-            const milestone = node.milestone || null;
+            let milestone = node.milestone || null;
+            const textBlob = `${node.title || ""}\n${node.body || ""}`;
+            const phaseToken = (textBlob.match(/\b0\.\d+\.\d+\b/) || [null])[0] || DEFAULT_PHASE;
+
+            // Auto-attach milestone if missing, based on phase token.
+            if (!milestone) {
+              try {
+                const ms = await github.rest.issues.listMilestones({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  state: "all",
+                  per_page: 100,
+                });
+                const candidates = (ms.data || []).filter((m) => (m.title || "").includes(phaseToken));
+                if (candidates.length > 0) {
+                  candidates.sort((a, b) => {
+                    const sa = a.state === "open" ? 0 : 1;
+                    const sb = b.state === "open" ? 0 : 1;
+                    if (sa !== sb) return sa - sb;
+                    const da = a.due_on || "9999-12-31T00:00:00Z";
+                    const db = b.due_on || "9999-12-31T00:00:00Z";
+                    return da.localeCompare(db);
+                  });
+                  const chosen = candidates[0];
+                  await github.rest.issues.update({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: number,
+                    milestone: chosen.number,
+                  });
+                  milestone = {
+                    title: chosen.title,
+                    due_on: chosen.due_on,
+                  };
+                }
+              } catch (err) {
+                core.warning(`Auto-milestone skipped: ${err.message}`);
+              }
+            }
 
             const phaseFromMilestone = (() => {
-              if (!milestone || !milestone.title) return DEFAULT_PHASE;
+              if (!milestone || !milestone.title) return phaseToken;
               const m = milestone.title.match(/\b0\.\d+\.\d+\b/);
               return m ? m[0] : DEFAULT_PHASE;
             })();
