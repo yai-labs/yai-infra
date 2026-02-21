@@ -56,6 +56,8 @@ jobs:
             const statusField = fields.find((f) => f?.name === "Status");
             const gateField = fields.find((f) => f?.name === "Gate Status");
             const targetDateField = fields.find((f) => f?.name === "Target Date");
+            const workTypeField = fields.find((f) => f?.name === "Work Type");
+            const typeField = fields.find((f) => f?.name === "Type");
             if (!statusField || !gateField) {
               core.setFailed("Required fields not found (Status/Gate Status).");
               return;
@@ -111,8 +113,14 @@ jobs:
 
             await setSingle(statusField.id, statusOpt.id);
             await setSingle(gateField.id, gateOpt.id);
+            const issueOpt = (workTypeField?.options || []).find((o) => o.name === "Issue");
+            if (workTypeField && issueOpt) await setSingle(workTypeField.id, issueOpt.id);
+            const typeIssueOpt = (typeField?.options || []).find((o) => o.name === "Issue");
+            if (typeField && typeIssueOpt) await setSingle(typeField.id, typeIssueOpt.id);
 
-            const targetDateRaw = issue.milestone?.due_on || issue.closed_at || null;
+            const targetDateRaw = closed
+              ? (issue.closed_at || issue.milestone?.due_on || null)
+              : (issue.milestone?.due_on || null);
             const targetDate = targetDateRaw ? new Date(targetDateRaw).toISOString().slice(0, 10) : null;
             if (targetDateField && targetDate) {
               await github.graphql(
