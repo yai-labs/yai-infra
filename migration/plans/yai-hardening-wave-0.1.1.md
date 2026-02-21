@@ -28,3 +28,9 @@ Reduce `yai` repository surface to runtime/core scope and move non-core governan
 - [ ] `yai` non-core assets removed or wrapped
 - [ ] `yai` CI green after cleanup
 - [ ] rollback guidance updated
+
+## Tooling Externalization (bin/python)
+
+- Canonical governance tooling moved to `yai-infra/tools/bin` and `yai-infra/tools/python/yai_tools`.
+- `yai` keeps mirrored copies temporarily because current workflows execute local tool paths.
+- Next step: convert remaining validator workflows to infra-owned reusable runners and then thin local wrappers.
