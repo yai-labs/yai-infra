@@ -1,20 +1,24 @@
-name: reusable-auto-label-pr
+name: auto-label-issue
 
 on:
-  workflow_call:
+  issues:
+    types: [opened, edited, reopened]
 
 permissions:
   contents: read
-  pull-requests: write
+  issues: write
 
 jobs:
   label:
     runs-on: ubuntu-latest
     steps:
-      - name: Ensure canonical labels exist
+      - name: Apply semantic labels to issues
         uses: actions/github-script@v7
         with:
           script: |
+            const issue = context.payload.issue;
+            if (!issue) return;
+
             const specs = [
               { name: "type:docs", color: "0e8a16", description: "Documentation changes" },
               { name: "type:ci", color: "5319e7", description: "CI/workflow changes" },
@@ -41,8 +45,21 @@ jobs:
                 });
               }
             }
-      - name: Apply labels from .github/labeler.yml
-        uses: actions/labeler@v5
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          sync-labels: true
+
+            const text = `${issue.title || ""}\n${issue.body || ""}`.toLowerCase();
+            const labels = new Set();
+
+            if (/\bci\b|workflow|github actions?|pipeline/.test(text)) labels.add("type:ci");
+            if (/docs?|runbook|migration|governance|policy/.test(text)) labels.add("type:docs");
+            if (/tools?|script|schema|lint|verify/.test(text)) labels.add("type:tooling");
+            if (/migration|cutover|rollback|stabilization/.test(text)) labels.add("type:migration");
+            if (/governance|policy|project field|milestone|epic|sub-issue/.test(text)) labels.add("type:governance");
+            if (!Array.from(labels).some((l) => l.startsWith("track:"))) labels.add("track:release-hardening");
+
+            if (labels.size === 0) return;
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              labels: Array.from(labels),
+            });
