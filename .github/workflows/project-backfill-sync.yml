@@ -1,0 +1,295 @@
+name: project-backfill-sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      project_owner:
+        description: "Project owner/org"
+        required: false
+        default: "yai-labs"
+      project_number:
+        description: "Project number"
+        required: false
+        default: "5"
+      default_phase:
+        description: "Fallback phase when milestone is absent"
+        required: false
+        default: "0.1.1"
+      default_track:
+        description: "Fallback track when track label is absent"
+        required: false
+        default: "release-hardening"
+      default_assignee:
+        description: "Default assignee login"
+        required: false
+        default: "francescomaiomascio"
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+      repository-projects: write
+    steps:
+      - name: Backfill project fields and labels
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.YAI_PROJECT_TOKEN != '' && secrets.YAI_PROJECT_TOKEN || github.token }}
+          script: |
+            const OWNER = "${{ inputs.project_owner }}";
+            const PROJECT_NUMBER = Number("${{ inputs.project_number }}");
+            const DEFAULT_PHASE = "${{ inputs.default_phase }}";
+            const DEFAULT_TRACK = "${{ inputs.default_track }}";
+            const DEFAULT_ASSIGNEE = "${{ inputs.default_assignee }}";
+
+            const LABEL_SPECS = [
+              { name: "type:docs", color: "0e8a16", description: "Documentation changes" },
+              { name: "type:ci", color: "5319e7", description: "CI/workflow changes" },
+              { name: "type:tooling", color: "1d76db", description: "Tooling/scripts/schemas changes" },
+              { name: "type:migration", color: "fbca04", description: "Migration/cutover/stabilization changes" },
+              { name: "type:governance", color: "d93f0b", description: "Governance/project/policy changes" },
+              { name: "track:release-hardening", color: "b60205", description: "Release hardening track" },
+              { name: "track:cutover-wave", color: "fbca04", description: "Cutover wave track" },
+              { name: "track:infra-bootstrap", color: "1d76db", description: "Infra bootstrap track" },
+              { name: "track:stabilization", color: "e99695", description: "Stabilization track" },
+            ];
+
+            const ensureLabel = async (owner, repo, spec) => {
+              try {
+                await github.rest.issues.getLabel({ owner, repo, name: spec.name });
+              } catch (err) {
+                if (err.status !== 404) throw err;
+                await github.rest.issues.createLabel({ owner, repo, ...spec });
+              }
+            };
+
+            const projectRes = await github.graphql(
+              `
+              query($owner:String!,$number:Int!){
+                organization(login:$owner){
+                  projectV2(number:$number){
+                    id
+                    fields(first:100){
+                      nodes{
+                        ... on ProjectV2FieldCommon{ id name }
+                        ... on ProjectV2SingleSelectField{
+                          id
+                          name
+                          options{ id name }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+              `,
+              { owner: OWNER, number: PROJECT_NUMBER }
+            );
+            const project = projectRes.organization?.projectV2;
+            if (!project) {
+              core.setFailed(`Project not found: ${OWNER}#${PROJECT_NUMBER}`);
+              return;
+            }
+
+            const fields = project.fields.nodes || [];
+            const fieldByName = (name) => fields.find((f) => f?.name === name);
+            const optionId = (fieldName, optName) => {
+              const f = fieldByName(fieldName);
+              return (f?.options || []).find((o) => o.name === optName)?.id || null;
+            };
+            const setSingle = async (itemId, fieldName, optName) => {
+              const field = fieldByName(fieldName);
+              const opt = optionId(fieldName, optName);
+              if (!field || !opt) return false;
+              await github.graphql(
+                `
+                mutation($projectId:ID!,$itemId:ID!,$fieldId:ID!,$optionId:String!){
+                  updateProjectV2ItemFieldValue(input:{
+                    projectId:$projectId,
+                    itemId:$itemId,
+                    fieldId:$fieldId,
+                    value:{ singleSelectOptionId:$optionId }
+                  }){ projectV2Item{ id } }
+                }
+                `,
+                { projectId: project.id, itemId, fieldId: field.id, optionId: opt }
+              );
+              return true;
+            };
+            const setDate = async (itemId, date) => {
+              const field = fieldByName("Target Date");
+              if (!field) return false;
+              if (!date) {
+                await github.graphql(
+                  `
+                  mutation($projectId:ID!,$itemId:ID!,$fieldId:ID!){
+                    clearProjectV2ItemFieldValue(input:{
+                      projectId:$projectId,
+                      itemId:$itemId,
+                      fieldId:$fieldId
+                    }){ projectV2Item{ id } }
+                  }
+                  `,
+                  { projectId: project.id, itemId, fieldId: field.id }
+                );
+                return true;
+              }
+              await github.graphql(
+                `
+                mutation($projectId:ID!,$itemId:ID!,$fieldId:ID!,$date:Date!){
+                  updateProjectV2ItemFieldValue(input:{
+                    projectId:$projectId,
+                    itemId:$itemId,
+                    fieldId:$fieldId,
+                    value:{ date:$date }
+                  }){ projectV2Item{ id } }
+                }
+                `,
+                { projectId: project.id, itemId, fieldId: field.id, date }
+              );
+              return true;
+            };
+
+            const inferTrack = (labels) => {
+              const s = new Set(labels.map((x) => x.toLowerCase()));
+              if (s.has("track:infra-bootstrap")) return "infra-bootstrap";
+              if (s.has("track:cutover-wave")) return "cutover-wave";
+              if (s.has("track:stabilization")) return "stabilization";
+              if (s.has("track:release-hardening")) return "release-hardening";
+              return DEFAULT_TRACK;
+            };
+            const inferTypeLabels = (title, body, labels, isIssue) => {
+              const txt = `${title || ""}\n${body || ""}`.toLowerCase();
+              const out = new Set(labels.map((x) => x.toLowerCase()));
+              if (!Array.from(out).some((x) => x.startsWith("track:"))) out.add(`track:${DEFAULT_TRACK}`);
+              if (/\bci\b|workflow|github actions?|pipeline/.test(txt)) out.add("type:ci");
+              if (/docs?|runbook|migration|governance|policy/.test(txt)) out.add("type:docs");
+              if (/tools?|script|schema|lint|verify/.test(txt)) out.add("type:tooling");
+              if (/migration|cutover|rollback|stabilization/.test(txt)) out.add("type:migration");
+              if (/governance|policy|project field|milestone|epic|sub-issue/.test(txt)) out.add("type:governance");
+              if (!Array.from(out).some((x) => x.startsWith("type:"))) {
+                out.add(isIssue ? "type:governance" : "type:ci");
+              }
+              return Array.from(out);
+            };
+
+            const items = [];
+            let after = null;
+            do {
+              const page = await github.graphql(
+                `
+                query($project:ID!,$after:String){
+                  node(id:$project){
+                    ... on ProjectV2{
+                      items(first:100, after:$after){
+                        pageInfo{ hasNextPage endCursor }
+                        nodes{
+                          id
+                          content{
+                            __typename
+                            ... on Issue{
+                              number
+                              title
+                              body
+                              state
+                              closedAt
+                              repository{ name owner{ login } nameWithOwner }
+                              milestone{ title dueOn }
+                              labels(first:50){ nodes{ name } }
+                              assignees(first:10){ nodes{ login } }
+                            }
+                            ... on PullRequest{
+                              number
+                              title
+                              body
+                              state
+                              merged
+                              mergedAt
+                              closedAt
+                              repository{ name owner{ login } nameWithOwner }
+                              milestone{ title dueOn }
+                              labels(first:50){ nodes{ name } }
+                              assignees(first:10){ nodes{ login } }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                `,
+                { project: project.id, after }
+              );
+              const conn = page.node?.items;
+              for (const n of conn?.nodes || []) items.push(n);
+              after = conn?.pageInfo?.hasNextPage ? conn.pageInfo.endCursor : null;
+            } while (after);
+
+            let processed = 0;
+            for (const item of items) {
+              const c = item.content;
+              if (!c || (c.__typename !== "Issue" && c.__typename !== "PullRequest")) continue;
+              const isIssue = c.__typename === "Issue";
+              const owner = c.repository.owner.login;
+              const repo = c.repository.name;
+              const number = c.number;
+              const stateClosed = c.state === "CLOSED" || c.state === "MERGED";
+              const merged = !isIssue ? !!c.merged : false;
+              const labels = (c.labels?.nodes || []).map((x) => x.name || "");
+              const normalized = inferTypeLabels(c.title, c.body, labels, isIssue);
+
+              // Ensure canonical labels exist and apply normalized set.
+              for (const spec of LABEL_SPECS) await ensureLabel(owner, repo, spec);
+              await github.rest.issues.setLabels({
+                owner,
+                repo,
+                issue_number: number,
+                labels: normalized,
+              });
+
+              // Ensure default assignee exists.
+              try {
+                const currentAssignees = (c.assignees?.nodes || []).map((a) => a.login);
+                if (!currentAssignees.includes(DEFAULT_ASSIGNEE)) {
+                  await github.rest.issues.addAssignees({
+                    owner,
+                    repo,
+                    issue_number: number,
+                    assignees: [DEFAULT_ASSIGNEE],
+                  });
+                }
+              } catch (err) {
+                core.warning(`Assignee sync skipped for ${owner}/${repo}#${number}: ${err.message}`);
+              }
+
+              const phase = (() => {
+                const fromMilestone = (c.milestone?.title || "").match(/\b0\.\d+\.\d+\b/);
+                return fromMilestone ? fromMilestone[0] : DEFAULT_PHASE;
+              })();
+              const track = inferTrack(normalized);
+              const status = stateClosed ? "Done" : "In Progress";
+              const gate = stateClosed ? (isIssue || merged ? "Passed" : "Failed") : "Running";
+              const workType = isIssue ? "Issue" : "PR";
+              const phaseType = isIssue ? "Execution Issue" : "PR";
+              const klass = isIssue && (c.title || "").toLowerCase().startsWith("[infra]") ? "A" : "B";
+
+              const closedDateRaw = isIssue ? c.closedAt : (c.mergedAt || c.closedAt);
+              const targetRaw = stateClosed ? (closedDateRaw || c.milestone?.dueOn || null) : (c.milestone?.dueOn || null);
+              const targetDate = targetRaw ? new Date(targetRaw).toISOString().slice(0, 10) : null;
+
+              await setSingle(item.id, "Status", status);
+              await setSingle(item.id, "Gate Status", gate);
+              await setSingle(item.id, "Phase", phase);
+              await setSingle(item.id, "Track", track);
+              await setSingle(item.id, "Work Type", workType);
+              await setSingle(item.id, "Type", workType);
+              await setSingle(item.id, "Phase Type", phaseType);
+              await setSingle(item.id, "Class", klass);
+              await setDate(item.id, targetDate);
+
+              processed += 1;
+            }
+
+            core.info(`Project backfill completed. Items processed: ${processed}`);

@@ -79,9 +79,11 @@ jobs:
               return m ? m[0] : DEFAULT_PHASE;
             })();
             const phase = phaseFromMilestone;
-            const targetDateRaw = milestone?.due_on
-              || (isIssue ? node.closed_at : (node.merged_at || node.closed_at))
-              || null;
+            const isClosed = node.state === "closed";
+            const closedDate = isIssue ? node.closed_at : (node.merged_at || node.closed_at);
+            const targetDateRaw = isClosed
+              ? (closedDate || milestone?.due_on || null)
+              : (milestone?.due_on || null);
             const targetDate = targetDateRaw ? new Date(targetDateRaw).toISOString().slice(0, 10) : null;
 
             const track = (() => {
@@ -98,7 +100,6 @@ jobs:
               return t.startsWith("[infra]") ? "A" : "B";
             })();
 
-            const isClosed = node.state === "closed";
             const merged = !isIssue ? !!node.merged : false;
             const statusName = isClosed ? "Done" : "In Progress";
             const gateName = isClosed ? (isIssue || merged ? "Passed" : "Failed") : "Running";
@@ -191,6 +192,7 @@ jobs:
               ["Phase", phase],
               ["Track", track],
               ["Work Type", workTypeName],
+              ["Type", workTypeName],
               ["Phase Type", phaseTypeName],
               ["Class", className],
             ];

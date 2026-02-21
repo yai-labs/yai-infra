@@ -64,6 +64,8 @@ jobs:
             const statusField = fields.find((f) => f?.name === "Status");
             const gateField = fields.find((f) => f?.name === "Gate Status");
             const targetDateField = fields.find((f) => f?.name === "Target Date");
+            const workTypeField = fields.find((f) => f?.name === "Work Type");
+            const typeField = fields.find((f) => f?.name === "Type");
             if (!statusField) {
               core.setFailed("Status field not found in project.");
               return;
@@ -121,6 +123,10 @@ jobs:
             if (gateField && gateOpt) {
               await setSingle(gateField.id, gateOpt.id);
             }
+            const prOpt = (workTypeField?.options || []).find((o) => o.name === "PR");
+            if (workTypeField && prOpt) await setSingle(workTypeField.id, prOpt.id);
+            const typePrOpt = (typeField?.options || []).find((o) => o.name === "PR");
+            if (typeField && typePrOpt) await setSingle(typeField.id, typePrOpt.id);
 
             const targetDateRaw = pr.milestone?.due_on || pr.merged_at || pr.closed_at || null;
             const targetDate = targetDateRaw ? new Date(targetDateRaw).toISOString().slice(0, 10) : null;
