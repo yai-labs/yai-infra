@@ -122,9 +122,9 @@ jobs:
               await setSingle(gateField.id, gateOpt.id);
             }
 
-            const due = pr.milestone?.due_on || null;
-            if (targetDateField && due) {
-              const date = new Date(due).toISOString().slice(0, 10);
+            const targetDateRaw = pr.milestone?.due_on || pr.merged_at || pr.closed_at || null;
+            const targetDate = targetDateRaw ? new Date(targetDateRaw).toISOString().slice(0, 10) : null;
+            if (targetDateField && targetDate) {
               await github.graphql(
                 `
                 mutation($projectId:ID!,$itemId:ID!,$fieldId:ID!,$date:Date!){
@@ -136,7 +136,20 @@ jobs:
                   }){ projectV2Item{ id } }
                 }
                 `,
-                { projectId: project.id, itemId: item.id, fieldId: targetDateField.id, date }
+                { projectId: project.id, itemId: item.id, fieldId: targetDateField.id, date: targetDate }
+              );
+            } else if (targetDateField) {
+              await github.graphql(
+                `
+                mutation($projectId:ID!,$itemId:ID!,$fieldId:ID!){
+                  clearProjectV2ItemFieldValue(input:{
+                    projectId:$projectId,
+                    itemId:$itemId,
+                    fieldId:$fieldId
+                  }){ projectV2Item{ id } }
+                }
+                `,
+                { projectId: project.id, itemId: item.id, fieldId: targetDateField.id }
               );
             }
 

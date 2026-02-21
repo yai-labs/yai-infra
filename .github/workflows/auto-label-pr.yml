@@ -1,0 +1,13 @@
+name: auto-label-pr
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  call-auto-label:
+    uses: ./.github/workflows/reusable-auto-label-pr.yml

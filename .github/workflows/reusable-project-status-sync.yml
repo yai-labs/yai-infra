@@ -24,6 +24,10 @@ on:
         required: false
         type: string
         default: ""
+      pr_closed_at:
+        required: false
+        type: string
+        default: ""
     secrets:
       project_token:
         required: false
@@ -160,7 +164,10 @@ jobs:
 
             const milestoneDueRaw = "${{ inputs.pr_milestone_due_on }}";
             const milestoneDue = milestoneDueRaw && milestoneDueRaw !== "null" ? milestoneDueRaw : null;
-            const targetDate = milestoneDue ? new Date(milestoneDue).toISOString().slice(0, 10) : null;
+            const closedAtRaw = "${{ inputs.pr_closed_at }}";
+            const closedAt = closedAtRaw && closedAtRaw !== "null" ? closedAtRaw : null;
+            const targetDateRaw = milestoneDue || closedAt || null;
+            const targetDate = targetDateRaw ? new Date(targetDateRaw).toISOString().slice(0, 10) : null;
             if (targetDateField && targetDate) {
               await github.graphql(
                 `
@@ -180,6 +187,25 @@ jobs:
                   itemId: item.id,
                   fieldId: targetDateField.id,
                   date: targetDate,
+                }
+              );
+            } else if (targetDateField) {
+              await github.graphql(
+                `
+                mutation($projectId:ID!,$itemId:ID!,$fieldId:ID!){
+                  clearProjectV2ItemFieldValue(input:{
+                    projectId:$projectId,
+                    itemId:$itemId,
+                    fieldId:$fieldId
+                  }){
+                    projectV2Item{ id }
+                  }
+                }
+                `,
+                {
+                  projectId: project.id,
+                  itemId: item.id,
+                  fieldId: targetDateField.id,
                 }
               );
             }
