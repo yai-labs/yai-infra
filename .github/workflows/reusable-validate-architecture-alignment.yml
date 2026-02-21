@@ -1,0 +1,41 @@
+name: reusable-validate-architecture-alignment
+
+on:
+  workflow_call:
+    inputs:
+      base_sha:
+        required: false
+        type: string
+        default: ""
+      head_sha:
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  architecture-alignment:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Architecture alignment check (hard fail)
+        run: |
+          python3 -m pip install --upgrade pip
+          BASE_SHA="${{ inputs.base_sha }}"
+          HEAD_SHA="${{ inputs.head_sha }}"
+          if [ -z "$BASE_SHA" ]; then
+            BASE_SHA="$(git merge-base HEAD origin/main)"
+          fi
+          if [ -z "$HEAD_SHA" ]; then
+            HEAD_SHA="$(git rev-parse HEAD)"
+          fi
+          tools/bin/yai-architecture-check --changed --base "$BASE_SHA" --head "$HEAD_SHA"
