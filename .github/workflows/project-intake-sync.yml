@@ -1,0 +1,194 @@
+name: project-intake-sync
+
+on:
+  issues:
+    types: [opened, reopened, edited, milestoned, demilestoned, labeled, unlabeled]
+  pull_request:
+    types: [opened, reopened, edited, synchronize, labeled, unlabeled, milestoned, demilestoned]
+
+jobs:
+  intake:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+      repository-projects: write
+    steps:
+      - name: Auto-assign and sync intake fields
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.YAI_PROJECT_TOKEN != '' && secrets.YAI_PROJECT_TOKEN || github.token }}
+          script: |
+            const OWNER = "yai-labs";
+            const PROJECT_NUMBER = 5;
+            const DEFAULT_ASSIGNEE = "francescomaiomascio";
+            const DEFAULT_PHASE = "0.1.1";
+            const DEFAULT_TRACK = "release-hardening";
+            const DEFAULT_TARGET_BY_PHASE = {
+              "0.1.0": "2026-02-27",
+              "0.1.1": "2026-03-06",
+            };
+
+            const isIssue = context.eventName === "issues";
+            const node = isIssue ? context.payload.issue : context.payload.pull_request;
+            if (!node) return;
+
+            const number = node.number;
+            const contentId = node.node_id;
+            const labels = (node.labels || []).map((l) => (l.name || "").toLowerCase());
+            const milestone = node.milestone || null;
+
+            const phaseFromMilestone = (() => {
+              if (!milestone || !milestone.title) return DEFAULT_PHASE;
+              const m = milestone.title.match(/\b0\.\d+\.\d+\b/);
+              return m ? m[0] : DEFAULT_PHASE;
+            })();
+            const phase = phaseFromMilestone;
+            const targetDate = milestone?.due_on
+              ? new Date(milestone.due_on).toISOString().slice(0, 10)
+              : (DEFAULT_TARGET_BY_PHASE[phase] || DEFAULT_TARGET_BY_PHASE[DEFAULT_PHASE]);
+
+            const track = (() => {
+              if (labels.includes("track:infra-bootstrap")) return "infra-bootstrap";
+              if (labels.includes("track:cutover-wave")) return "cutover-wave";
+              if (labels.includes("track:stabilization")) return "stabilization";
+              if (labels.includes("track:release-hardening")) return "release-hardening";
+              return DEFAULT_TRACK;
+            })();
+
+            const isClosed = node.state === "closed";
+            const merged = !isIssue ? !!node.merged : false;
+            const statusName = isClosed ? "Done" : "In Progress";
+            const gateName = isClosed ? (isIssue || merged ? "Passed" : "Failed") : "Running";
+            const workTypeName = isIssue ? "Issue" : "PR";
+            const phaseTypeName = isIssue ? "Execution Issue" : "PR";
+
+            // Auto-assign owner on intake.
+            try {
+              await github.rest.issues.addAssignees({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: number,
+                assignees: [DEFAULT_ASSIGNEE],
+              });
+            } catch (err) {
+              core.warning(`Auto-assign skipped: ${err.message}`);
+            }
+
+            const projectRes = await github.graphql(
+              `
+              query($owner:String!,$number:Int!){
+                organization(login:$owner){
+                  projectV2(number:$number){
+                    id
+                    fields(first:50){
+                      nodes{
+                        ... on ProjectV2FieldCommon{ id name }
+                        ... on ProjectV2SingleSelectField{
+                          id
+                          name
+                          options{ id name }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+              `,
+              { owner: OWNER, number: PROJECT_NUMBER }
+            );
+            const project = projectRes.organization?.projectV2;
+            if (!project) {
+              core.setFailed(`Project not found: ${OWNER}#${PROJECT_NUMBER}`);
+              return;
+            }
+
+            const itemRes = await github.graphql(
+              `
+              mutation($projectId:ID!,$contentId:ID!){
+                addProjectV2ItemById(input:{ projectId:$projectId, contentId:$contentId }){
+                  item{ id }
+                }
+              }
+              `,
+              { projectId: project.id, contentId }
+            ).catch(() => null);
+
+            const getItemsRes = await github.graphql(
+              `
+              query($id:ID!){
+                node(id:$id){
+                  ... on Issue{
+                    projectItems(first:50){ nodes{ id project{ id } } }
+                  }
+                  ... on PullRequest{
+                    projectItems(first:50){ nodes{ id project{ id } } }
+                  }
+                }
+              }
+              `,
+              { id: contentId }
+            );
+            const items = getItemsRes.node?.projectItems?.nodes || [];
+            const item = items.find((i) => i.project?.id === project.id) || itemRes?.addProjectV2ItemById?.item;
+            if (!item) {
+              core.setFailed(`Unable to find/create project item for #${number}.`);
+              return;
+            }
+
+            const fields = project.fields.nodes || [];
+            const fieldByName = (name) => fields.find((f) => f?.name === name);
+            const optionId = (fieldName, optName) => {
+              const f = fieldByName(fieldName);
+              return (f?.options || []).find((o) => o.name === optName)?.id || null;
+            };
+
+            const updates = [
+              ["Status", statusName],
+              ["Gate Status", gateName],
+              ["Phase", phase],
+              ["Track", track],
+              ["Work Type", workTypeName],
+              ["Phase Type", phaseTypeName],
+            ];
+
+            for (const [fname, oname] of updates) {
+              const field = fieldByName(fname);
+              const opt = optionId(fname, oname);
+              if (!field || !opt) continue;
+              await github.graphql(
+                `
+                mutation($projectId:ID!,$itemId:ID!,$fieldId:ID!,$optionId:String!){
+                  updateProjectV2ItemFieldValue(input:{
+                    projectId:$projectId,
+                    itemId:$itemId,
+                    fieldId:$fieldId,
+                    value:{ singleSelectOptionId:$optionId }
+                  }){ projectV2Item{ id } }
+                }
+                `,
+                { projectId: project.id, itemId: item.id, fieldId: field.id, optionId: opt }
+              );
+            }
+
+            const targetField = fieldByName("Target Date");
+            if (targetField && targetDate) {
+              await github.graphql(
+                `
+                mutation($projectId:ID!,$itemId:ID!,$fieldId:ID!,$date:Date!){
+                  updateProjectV2ItemFieldValue(input:{
+                    projectId:$projectId,
+                    itemId:$itemId,
+                    fieldId:$fieldId,
+                    value:{ date:$date }
+                  }){ projectV2Item{ id } }
+                }
+                `,
+                { projectId: project.id, itemId: item.id, fieldId: targetField.id, date: targetDate }
+              );
+            }
+
+            core.info(
+              `Intake synced for #${number}: assignee=${DEFAULT_ASSIGNEE}, status=${statusName}, gate=${gateName}, phase=${phase}, track=${track}.`
+            );
