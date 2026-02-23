@@ -25,6 +25,16 @@ jobs:
             const DEFAULT_ASSIGNEE = "francescomaiomascio";
             const DEFAULT_PHASE = "0.1.1";
             const DEFAULT_TRACK = "release-hardening";
+            const normalize = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+            const resolveOptionId = (field, desired, aliases = []) => {
+              if (!field || !field.options) return null;
+              const candidates = [desired, ...aliases].map(normalize).filter(Boolean);
+              for (const cand of candidates) {
+                const opt = field.options.find((o) => normalize(o.name) === cand);
+                if (opt) return opt.id;
+              }
+              return null;
+            };
 
             const isIssue = context.eventName === "issues";
             const node = isIssue ? context.payload.issue : context.payload.pull_request;
@@ -82,7 +92,7 @@ jobs:
             const isClosed = node.state === "closed";
             const closedDate = isIssue ? node.closed_at : (node.merged_at || node.closed_at);
             const targetDateRaw = isClosed
-              ? (closedDate || milestone?.due_on || null)
+              ? (closedDate || null)
               : (milestone?.due_on || null);
             const targetDate = targetDateRaw ? new Date(targetDateRaw).toISOString().slice(0, 10) : null;
 
@@ -104,6 +114,14 @@ jobs:
             const statusName = isClosed ? "Done" : "In Progress";
             const gateName = isClosed ? (isIssue || merged ? "Passed" : "Failed") : "Running";
             const workTypeName = isIssue ? "Issue" : "PR";
+            const typeName = (() => {
+              if (labels.includes("type:migration")) return "Migration";
+              if (labels.includes("type:governance")) return "Governance";
+              if (labels.includes("type:tooling")) return "Tooling";
+              if (labels.includes("type:ci")) return "CI";
+              if (labels.includes("type:docs")) return "Docs";
+              return isIssue ? "Issue" : "PR";
+            })();
             const phaseTypeName = isIssue ? "Execution Issue" : "PR";
 
             // Auto-assign owner on intake.
@@ -181,10 +199,6 @@ jobs:
 
             const fields = project.fields.nodes || [];
             const fieldByName = (name) => fields.find((f) => f?.name === name);
-            const optionId = (fieldName, optName) => {
-              const f = fieldByName(fieldName);
-              return (f?.options || []).find((o) => o.name === optName)?.id || null;
-            };
 
             const updates = [
               ["Status", statusName],
@@ -192,14 +206,20 @@ jobs:
               ["Phase", phase],
               ["Track", track],
               ["Work Type", workTypeName],
-              ["Type", workTypeName],
+              ["Type", typeName],
               ["Phase Type", phaseTypeName],
               ["Class", className],
             ];
 
             for (const [fname, oname] of updates) {
               const field = fieldByName(fname);
-              const opt = optionId(fname, oname);
+              const aliases = (() => {
+                if (fname === "Track") return [DEFAULT_TRACK, track.replace(/-/g, " ")];
+                if (fname === "Type") return [workTypeName, isIssue ? "Task" : "Change"];
+                if (fname === "Status") return [isClosed ? "Closed" : "Open"];
+                return [];
+              })();
+              const opt = resolveOptionId(field, oname, aliases);
               if (!field || !opt) continue;
               await github.graphql(
                 `

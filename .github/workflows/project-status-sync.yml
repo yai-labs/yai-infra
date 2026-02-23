@@ -26,6 +26,16 @@ jobs:
             const owner = "yai-labs";
             const projectNumber = 5;
             const merged = !!pr.merged;
+            const normalize = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+            const resolveOptionId = (field, desired, aliases = []) => {
+              if (!field || !field.options) return null;
+              const candidates = [desired, ...aliases].map(normalize).filter(Boolean);
+              for (const cand of candidates) {
+                const opt = field.options.find((o) => normalize(o.name) === cand);
+                if (opt) return opt.id;
+              }
+              return null;
+            };
 
             const projectQuery = `
               query($owner:String!,$number:Int!){
@@ -71,16 +81,15 @@ jobs:
               return;
             }
 
-            const doneOpt = (statusField.options || []).find((o) => o.name === "Done");
+            const doneOpt = (statusField.options || []).find((o) => normalize(o.name) === normalize("Done"))
+              || (statusField.options || []).find((o) => normalize(o.name) === normalize("Closed"));
             if (!doneOpt) {
               core.setFailed("Status option 'Done' not found.");
               return;
             }
 
             const gateName = merged ? "Passed" : "Failed";
-            const gateOpt = gateField
-              ? (gateField.options || []).find((o) => o.name === gateName)
-              : null;
+            const gateOptId = gateField ? resolveOptionId(gateField, gateName) : null;
 
             const prItemQuery = `
               query($prId:ID!){
@@ -120,15 +129,16 @@ jobs:
               );
 
             await setSingle(statusField.id, doneOpt.id);
-            if (gateField && gateOpt) {
-              await setSingle(gateField.id, gateOpt.id);
+            if (gateField && gateOptId) {
+              await setSingle(gateField.id, gateOptId);
             }
-            const prOpt = (workTypeField?.options || []).find((o) => o.name === "PR");
+            const prOpt = (workTypeField?.options || []).find((o) => normalize(o.name) === normalize("PR"));
             if (workTypeField && prOpt) await setSingle(workTypeField.id, prOpt.id);
-            const typePrOpt = (typeField?.options || []).find((o) => o.name === "PR");
+            const typePrOptId = resolveOptionId(typeField, "PR", ["Pull Request", "Change"]);
+            const typePrOpt = typePrOptId ? { id: typePrOptId } : null;
             if (typeField && typePrOpt) await setSingle(typeField.id, typePrOpt.id);
 
-            const targetDateRaw = pr.milestone?.due_on || pr.merged_at || pr.closed_at || null;
+            const targetDateRaw = pr.merged_at || pr.closed_at || null;
             const targetDate = targetDateRaw ? new Date(targetDateRaw).toISOString().slice(0, 10) : null;
             if (targetDateField && targetDate) {
               await github.graphql(

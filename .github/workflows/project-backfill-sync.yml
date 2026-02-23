@@ -43,6 +43,7 @@ jobs:
             const DEFAULT_PHASE = "${{ inputs.default_phase }}";
             const DEFAULT_TRACK = "${{ inputs.default_track }}";
             const DEFAULT_ASSIGNEE = "${{ inputs.default_assignee }}";
+            const normalize = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
 
             const LABEL_SPECS = [
               { name: "type:docs", color: "0e8a16", description: "Documentation changes" },
@@ -95,13 +96,18 @@ jobs:
 
             const fields = project.fields.nodes || [];
             const fieldByName = (name) => fields.find((f) => f?.name === name);
-            const optionId = (fieldName, optName) => {
-              const f = fieldByName(fieldName);
-              return (f?.options || []).find((o) => o.name === optName)?.id || null;
+            const resolveOptionId = (field, desired, aliases = []) => {
+              if (!field || !field.options) return null;
+              const candidates = [desired, ...aliases].map(normalize).filter(Boolean);
+              for (const cand of candidates) {
+                const opt = field.options.find((o) => normalize(o.name) === cand);
+                if (opt) return opt.id;
+              }
+              return null;
             };
-            const setSingle = async (itemId, fieldName, optName) => {
+            const setSingle = async (itemId, fieldName, optName, aliases = []) => {
               const field = fieldByName(fieldName);
-              const opt = optionId(fieldName, optName);
+              const opt = resolveOptionId(field, optName, aliases);
               if (!field || !opt) return false;
               await github.graphql(
                 `
@@ -272,19 +278,28 @@ jobs:
               const status = stateClosed ? "Done" : "In Progress";
               const gate = stateClosed ? (isIssue || merged ? "Passed" : "Failed") : "Running";
               const workType = isIssue ? "Issue" : "PR";
+              const typeName = (() => {
+                const s = new Set(normalized);
+                if (s.has("type:migration")) return "Migration";
+                if (s.has("type:governance")) return "Governance";
+                if (s.has("type:tooling")) return "Tooling";
+                if (s.has("type:ci")) return "CI";
+                if (s.has("type:docs")) return "Docs";
+                return isIssue ? "Issue" : "PR";
+              })();
               const phaseType = isIssue ? "Execution Issue" : "PR";
               const klass = isIssue && (c.title || "").toLowerCase().startsWith("[infra]") ? "A" : "B";
 
               const closedDateRaw = isIssue ? c.closedAt : (c.mergedAt || c.closedAt);
-              const targetRaw = stateClosed ? (closedDateRaw || c.milestone?.dueOn || null) : (c.milestone?.dueOn || null);
+              const targetRaw = stateClosed ? (closedDateRaw || null) : (c.milestone?.dueOn || null);
               const targetDate = targetRaw ? new Date(targetRaw).toISOString().slice(0, 10) : null;
 
-              await setSingle(item.id, "Status", status);
+              await setSingle(item.id, "Status", status, [stateClosed ? "Closed" : "Open"]);
               await setSingle(item.id, "Gate Status", gate);
               await setSingle(item.id, "Phase", phase);
-              await setSingle(item.id, "Track", track);
+              await setSingle(item.id, "Track", track, [track.replace(/-/g, " "), DEFAULT_TRACK]);
               await setSingle(item.id, "Work Type", workType);
-              await setSingle(item.id, "Type", workType);
+              await setSingle(item.id, "Type", typeName, [workType, isIssue ? "Task" : "Change"]);
               await setSingle(item.id, "Phase Type", phaseType);
               await setSingle(item.id, "Class", klass);
               await setDate(item.id, targetDate);

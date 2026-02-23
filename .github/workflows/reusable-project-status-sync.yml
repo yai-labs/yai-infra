@@ -53,6 +53,16 @@ jobs:
             const prNumber = Number("${{ inputs.pr_number }}");
             const prNodeId = "${{ inputs.pr_node_id }}";
             const merged = "${{ inputs.pr_merged }}" === "true";
+            const normalize = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+            const resolveOptionId = (field, desired, aliases = []) => {
+              if (!field || !field.options) return null;
+              const candidates = [desired, ...aliases].map(normalize).filter(Boolean);
+              for (const cand of candidates) {
+                const opt = field.options.find((o) => normalize(o.name) === cand);
+                if (opt) return opt.id;
+              }
+              return null;
+            };
 
             const projectQuery = `
               query($owner:String!,$number:Int!){
@@ -92,22 +102,22 @@ jobs:
             const statusField = fields.find((f) => f?.name === "Status");
             const gateField = fields.find((f) => f?.name === "Gate Status");
             const targetDateField = fields.find((f) => f?.name === "Target Date");
+            const workTypeField = fields.find((f) => f?.name === "Work Type");
+            const typeField = fields.find((f) => f?.name === "Type");
 
             if (!statusField) {
               core.setFailed("Status field not found in project.");
               return;
             }
 
-            const doneOpt = (statusField.options || []).find((o) => o.name === "Done");
-            if (!doneOpt) {
+            const doneOptId = resolveOptionId(statusField, "Done", ["Closed"]);
+            if (!doneOptId) {
               core.setFailed("Status option 'Done' not found.");
               return;
             }
 
             const gateName = merged ? "Passed" : "Failed";
-            const gateOpt = gateField
-              ? (gateField.options || []).find((o) => o.name === gateName)
-              : null;
+            const gateOptId = gateField ? resolveOptionId(gateField, gateName) : null;
 
             const prItemQuery = `
               query($prId:ID!){
@@ -150,15 +160,33 @@ jobs:
               projectId: project.id,
               itemId: item.id,
               fieldId: statusField.id,
-              optionId: doneOpt.id,
+              optionId: doneOptId,
             });
 
-            if (gateField && gateOpt) {
+            if (gateField && gateOptId) {
               await github.graphql(updateMutation, {
                 projectId: project.id,
                 itemId: item.id,
                 fieldId: gateField.id,
-                optionId: gateOpt.id,
+                optionId: gateOptId,
+              });
+            }
+            const prOptId = resolveOptionId(workTypeField, "PR", ["Pull Request"]);
+            if (workTypeField && prOptId) {
+              await github.graphql(updateMutation, {
+                projectId: project.id,
+                itemId: item.id,
+                fieldId: workTypeField.id,
+                optionId: prOptId,
+              });
+            }
+            const typePrOptId = resolveOptionId(typeField, "PR", ["Pull Request", "Change"]);
+            if (typeField && typePrOptId) {
+              await github.graphql(updateMutation, {
+                projectId: project.id,
+                itemId: item.id,
+                fieldId: typeField.id,
+                optionId: typePrOptId,
               });
             }
 
@@ -166,7 +194,7 @@ jobs:
             const milestoneDue = milestoneDueRaw && milestoneDueRaw !== "null" ? milestoneDueRaw : null;
             const closedAtRaw = "${{ inputs.pr_closed_at }}";
             const closedAt = closedAtRaw && closedAtRaw !== "null" ? closedAtRaw : null;
-            const targetDateRaw = milestoneDue || closedAt || null;
+            const targetDateRaw = closedAt || milestoneDue || null;
             const targetDate = targetDateRaw ? new Date(targetDateRaw).toISOString().slice(0, 10) : null;
             if (targetDateField && targetDate) {
               await github.graphql(
