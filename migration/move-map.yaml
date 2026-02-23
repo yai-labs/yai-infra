@@ -14,6 +14,34 @@ rules:
     risk: medium
     cutover_step: hardening
 
+  - from: yai/tools/release/
+    to: yai-infra/tools/release/
+    mode: move
+    owner: infra
+    risk: high
+    cutover_step: hardening
+
+  - from: yai/tools/data/
+    to: yai-infra/tools/data/
+    mode: move
+    owner: infra
+    risk: medium
+    cutover_step: hardening
+
+  - from: yai/tools/dev/
+    to: yai-infra/tools/dev/
+    mode: move
+    owner: infra
+    risk: high
+    cutover_step: hardening
+
+  - from: yai/tools/bundle/
+    to: yai-infra/tools/bundle/
+    mode: move
+    owner: infra
+    risk: medium
+    cutover_step: hardening
+
   - from: yai/tools/schemas/docs/
     to: yai-infra/tools/schemas/docs/
     mode: move

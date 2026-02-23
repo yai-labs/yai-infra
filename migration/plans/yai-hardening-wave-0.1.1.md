@@ -10,6 +10,7 @@ Reduce `yai` repository surface to runtime/core scope and move non-core governan
   - `tools/python/yai_tools/**`
   - governance-oriented tooling entrypoints from `tools/bin/**`
   - `tools/ops/**` (cross-repo operational suite)
+  - `tools/release/**`, `tools/data/**`, `tools/dev/**`, `tools/bundle/**`
   - `tools/schemas/docs/**`
   - `docs/dev-guide/**`, `docs/templates/**`, `docs/_policy/**`, `docs/proof/**`
 - Keep in `yai`:
@@ -24,13 +25,14 @@ Reduce `yai` repository surface to runtime/core scope and move non-core governan
 5. Run CI and verify no governance duplication remains.
 
 ## Acceptance
-- [ ] `yai-infra` contains canonical governance/process/tooling/docs moved from `yai`
-- [ ] `yai` non-core assets removed or wrapped
+- [x] `yai-infra` contains canonical governance/process/tooling/docs moved from `yai` (wave2 tools import in progress)
+- [x] `yai` non-core assets removed or wrapped (ops/release/data/dev/bundle wrapperized)
 - [ ] `yai` CI green after cleanup
 - [ ] rollback guidance updated
 
 ## Tooling Externalization (bin/python)
 
 - Canonical governance tooling moved to `yai-infra/tools/bin` and `yai-infra/tools/python/yai_tools`.
-- `yai` keeps mirrored copies temporarily because current workflows execute local tool paths.
-- Next step: convert remaining validator workflows to infra-owned reusable runners and then thin local wrappers.
+- Canonical non-core tooling moved to `yai-infra/tools/{ops,release,data,dev,bundle}`.
+- `yai` keeps compatibility wrappers that delegate to infra canonical paths.
+- Next step: execute CI parity checks and then remove stale mirrors once consumer repos are pinned.
