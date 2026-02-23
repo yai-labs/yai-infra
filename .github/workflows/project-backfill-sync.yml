@@ -1,6 +1,8 @@
 name: project-backfill-sync
 
 on:
+  schedule:
+    - cron: "15 4 * * *"
   workflow_dispatch:
     inputs:
       project_owner:
@@ -26,6 +28,9 @@ on:
 
 jobs:
   backfill:
+    concurrency:
+      group: project-backfill-sync
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -38,11 +43,11 @@ jobs:
         with:
           github-token: ${{ secrets.YAI_PROJECT_TOKEN != '' && secrets.YAI_PROJECT_TOKEN || github.token }}
           script: |
-            const OWNER = "${{ inputs.project_owner }}";
-            const PROJECT_NUMBER = Number("${{ inputs.project_number }}");
-            const DEFAULT_PHASE = "${{ inputs.default_phase }}";
-            const DEFAULT_TRACK = "${{ inputs.default_track }}";
-            const DEFAULT_ASSIGNEE = "${{ inputs.default_assignee }}";
+            const OWNER = "${{ inputs.project_owner }}" || "yai-labs";
+            const PROJECT_NUMBER = Number("${{ inputs.project_number }}" || "5");
+            const DEFAULT_PHASE = "${{ inputs.default_phase }}" || "0.1.1";
+            const DEFAULT_TRACK = "${{ inputs.default_track }}" || "release-hardening";
+            const DEFAULT_ASSIGNEE = "${{ inputs.default_assignee }}" || "francescomaiomascio";
             const normalize = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
 
             const LABEL_SPECS = [
