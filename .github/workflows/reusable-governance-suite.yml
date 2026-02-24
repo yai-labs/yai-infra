@@ -4,103 +4,155 @@ on:
   workflow_call:
     inputs:
       org:
-        description: Organization/owner context for governance suite.
+        description: Organization/owner context.
         required: false
         type: string
         default: "yai-labs"
       project_number:
-        description: Project number context for governance suite.
+        description: Project number context.
         required: false
         type: number
         default: 0
-      repo_scope:
-        description: Repository scope selector.
+      enable_project_sync:
+        description: Enable project field sync jobs.
         required: false
-        type: string
-        default: ""
+        type: boolean
+        default: true
+      enable_template_verify:
+        description: Enable canonical template drift verification.
+        required: false
+        type: boolean
+        default: true
       dry_run:
-        description: If true, run all governance jobs in advisory mode.
+        description: Advisory mode for mutable governance operations.
         required: false
         type: boolean
         default: false
-      pr_body:
-        description: PR body payload for metadata validation.
-        required: false
-        type: string
-        default: ""
-      base_sha:
-        description: Base SHA for changelog validation.
-        required: false
-        type: string
-        default: ""
-      head_sha:
-        description: Head SHA for changelog validation.
-        required: false
-        type: string
-        default: ""
-      python:
-        description: Enable python check in verify reusable.
-        required: false
-        type: boolean
-        default: false
-      infra_repo:
-        description: Infra repository used for template mirror verification.
-        required: false
-        type: string
-        default: yai-labs/yai-infra
-      infra_ref:
-        description: Infra ref used for template mirror verification.
-        required: false
-        type: string
-        default: main
     secrets:
       project_token:
         required: false
 
 jobs:
-  validate_pr_metadata:
-    if: ${{ inputs.pr_body != '' }}
+  compute-pr-context:
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
+    runs-on: ubuntu-latest
+    outputs:
+      pr_body: ${{ steps.ctx.outputs.pr_body }}
+      base_sha: ${{ steps.ctx.outputs.base_sha }}
+      head_sha: ${{ steps.ctx.outputs.head_sha }}
+      is_closed: ${{ steps.ctx.outputs.is_closed }}
+    steps:
+      - name: Extract PR context
+        id: ctx
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request || {};
+            core.setOutput("pr_body", pr.body || "");
+            core.setOutput("base_sha", pr.base?.sha || "");
+            core.setOutput("head_sha", pr.head?.sha || "");
+            core.setOutput("is_closed", context.payload.action === "closed" ? "true" : "false");
+
+  auto-label-pr:
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
+    uses: ./.github/workflows/reusable-auto-label-pr.yml
+    with:
+      org: ${{ inputs.org }}
+      project_number: ${{ inputs.project_number }}
+      repo_scope: ""
+      dry_run: ${{ inputs.dry_run }}
+    secrets: inherit
+
+  validate-pr-metadata:
+    needs: [compute-pr-context]
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
     uses: ./.github/workflows/reusable-validate-pr-metadata.yml
     with:
       org: ${{ inputs.org }}
       project_number: ${{ inputs.project_number }}
-      repo_scope: ${{ inputs.repo_scope }}
+      repo_scope: ""
       dry_run: ${{ inputs.dry_run }}
-      pr_body: ${{ inputs.pr_body }}
+      pr_body: ${{ needs.compute-pr-context.outputs.pr_body }}
     secrets: inherit
 
-  validate_changelog:
-    if: ${{ inputs.base_sha != '' && inputs.head_sha != '' }}
-    needs: [validate_pr_metadata]
+  validate-changelog:
+    needs: [compute-pr-context, validate-pr-metadata]
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
     uses: ./.github/workflows/reusable-validate-changelog.yml
     with:
       org: ${{ inputs.org }}
       project_number: ${{ inputs.project_number }}
-      repo_scope: ${{ inputs.repo_scope }}
+      repo_scope: ""
       dry_run: ${{ inputs.dry_run }}
-      base_sha: ${{ inputs.base_sha }}
-      head_sha: ${{ inputs.head_sha }}
+      base_sha: ${{ needs.compute-pr-context.outputs.base_sha }}
+      head_sha: ${{ needs.compute-pr-context.outputs.head_sha }}
     secrets: inherit
 
-  verify_templates:
-    needs: [validate_changelog]
+  pr-issue-enforcement:
+    needs: [validate-pr-metadata]
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
+    uses: ./.github/workflows/reusable-pr-issue-enforcement.yml
+    with:
+      org: ${{ inputs.org }}
+      project_number: ${{ inputs.project_number }}
+      repo_scope: ""
+      dry_run: ${{ inputs.dry_run }}
+    secrets: inherit
+
+  pr-milestone-sync:
+    needs: [pr-issue-enforcement]
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
+    uses: ./.github/workflows/reusable-pr-milestone-sync.yml
+    with:
+      org: ${{ inputs.org }}
+      project_number: ${{ inputs.project_number }}
+      repo_scope: ""
+      dry_run: ${{ inputs.dry_run }}
+    secrets: inherit
+
+  project-intake-sync:
+    needs: [validate-changelog, pr-milestone-sync]
+    if: ${{ inputs.enable_project_sync && (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') }}
+    uses: ./.github/workflows/reusable-project-intake-sync.yml
+    with:
+      org: ${{ inputs.org }}
+      project_number: ${{ inputs.project_number }}
+      repo_scope: ""
+      dry_run: ${{ inputs.dry_run }}
+    secrets: inherit
+
+  project-status-sync:
+    needs: [compute-pr-context, project-intake-sync]
+    if: ${{ inputs.enable_project_sync && (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && needs.compute-pr-context.outputs.is_closed == 'true' }}
+    uses: ./.github/workflows/reusable-project-status-sync.yml
+    with:
+      org: ${{ inputs.org }}
+      project_number: ${{ inputs.project_number }}
+      repo_scope: ""
+      dry_run: ${{ inputs.dry_run }}
+    secrets: inherit
+
+  verify-template-sync:
+    needs: [project-intake-sync]
+    if: ${{ inputs.enable_template_verify && (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') }}
     uses: ./.github/workflows/reusable-verify-github-templates.yml
     with:
       org: ${{ inputs.org }}
       project_number: ${{ inputs.project_number }}
-      repo_scope: ${{ inputs.repo_scope }}
+      repo_scope: ""
       dry_run: ${{ inputs.dry_run }}
-      infra_repo: ${{ inputs.infra_repo }}
-      infra_ref: ${{ inputs.infra_ref }}
+      infra_repo: yai-labs/yai-infra
+      infra_ref: main
     secrets: inherit
 
-  verify:
-    needs: [verify_templates]
+  verify-governance:
+    needs: [verify-template-sync]
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
     uses: ./.github/workflows/reusable-verify.yml
     with:
       org: ${{ inputs.org }}
       project_number: ${{ inputs.project_number }}
-      repo_scope: ${{ inputs.repo_scope }}
+      repo_scope: ""
       dry_run: ${{ inputs.dry_run }}
-      python: ${{ inputs.python }}
+      python: false
     secrets: inherit
