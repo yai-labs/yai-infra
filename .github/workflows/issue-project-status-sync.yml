@@ -22,6 +22,16 @@ jobs:
 
             const owner = "yai-labs";
             const projectNumber = 5;
+            const normalize = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+            const resolveOptionId = (field, desired, aliases = []) => {
+              if (!field || !field.options) return null;
+              const candidates = [desired, ...aliases].map(normalize).filter(Boolean);
+              for (const cand of candidates) {
+                const opt = field.options.find((o) => normalize(o.name) === cand);
+                if (opt) return opt.id;
+              }
+              return null;
+            };
             const projectQuery = `
               query($owner:String!,$number:Int!){
                 organization(login:$owner){
@@ -67,9 +77,9 @@ jobs:
             const statusName = closed ? "Done" : "In Progress";
             const gateName = closed ? "Passed" : "Running";
 
-            const statusOpt = (statusField.options || []).find((o) => o.name === statusName);
-            const gateOpt = (gateField.options || []).find((o) => o.name === gateName);
-            if (!statusOpt || !gateOpt) {
+            const statusOptId = resolveOptionId(statusField, statusName, [closed ? "Closed" : "Open"]);
+            const gateOptId = resolveOptionId(gateField, gateName);
+            if (!statusOptId || !gateOptId) {
               core.setFailed("Required field options missing.");
               return;
             }
@@ -111,15 +121,16 @@ jobs:
                 { projectId: project.id, itemId: item.id, fieldId, optionId }
               );
 
-            await setSingle(statusField.id, statusOpt.id);
-            await setSingle(gateField.id, gateOpt.id);
-            const issueOpt = (workTypeField?.options || []).find((o) => o.name === "Issue");
+            await setSingle(statusField.id, statusOptId);
+            await setSingle(gateField.id, gateOptId);
+            const issueOpt = (workTypeField?.options || []).find((o) => normalize(o.name) === normalize("Issue"));
             if (workTypeField && issueOpt) await setSingle(workTypeField.id, issueOpt.id);
-            const typeIssueOpt = (typeField?.options || []).find((o) => o.name === "Issue");
+            const typeIssueOptId = resolveOptionId(typeField, "Issue", ["Task"]);
+            const typeIssueOpt = typeIssueOptId ? { id: typeIssueOptId } : null;
             if (typeField && typeIssueOpt) await setSingle(typeField.id, typeIssueOpt.id);
 
             const targetDateRaw = closed
-              ? (issue.closed_at || issue.milestone?.due_on || null)
+              ? (issue.closed_at || null)
               : (issue.milestone?.due_on || null);
             const targetDate = targetDateRaw ? new Date(targetDateRaw).toISOString().slice(0, 10) : null;
             if (targetDateField && targetDate) {
