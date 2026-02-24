@@ -57,16 +57,18 @@ def _repo_root() -> str:
 
 
 def _safe_specs_sha(repo_root: str) -> str:
-    try:
-        out = subprocess.run(
-            ["git", "-C", f"{repo_root}/deps/yai-specs", "rev-parse", "HEAD"],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        return out.stdout.strip()
-    except Exception:
-        return "unknown"
+    for rel in ("deps/yai-law", "deps/yai-specs"):
+        try:
+            out = subprocess.run(
+                ["git", "-C", f"{repo_root}/{rel}", "rev-parse", "HEAD"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            return out.stdout.strip()
+        except Exception:
+            continue
+    return "unknown"
 
 
 def _autofill_docs_touched(repo_root: str) -> list[str]:
@@ -107,7 +109,7 @@ def _default_commands_for_template(template: str) -> list[str]:
     if template == "type-b-twin-pr":
         return [
             "bash tools/release/check_pins.sh",
-            "git -C deps/yai-specs rev-parse --short HEAD",
+            "git -C deps/yai-law rev-parse --short HEAD",
             "git rev-parse --short HEAD",
         ]
     return ["git status -sb"]

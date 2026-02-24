@@ -1,7 +1,7 @@
 import argparse, hashlib, json
 from pathlib import Path
 
-REPOS = ["yai", "yai-cli", "yai-specs", "yai-skin", "yai-mind", "yai-yx"]
+REPOS = ["yai", "yai-cli", "yai-law", "yai-specs", "yai-skin", "yai-mind", "yai-yx"]
 
 
 def sha256_file(p: Path) -> str:
