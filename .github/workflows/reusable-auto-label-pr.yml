@@ -2,6 +2,45 @@ name: reusable-auto-label-pr
 
 on:
   workflow_call:
+    inputs:
+      org:
+        description: Organization/owner context for governance suite.
+        required: false
+        type: string
+        default: "yai-labs"
+      project_number:
+        description: Project number context for governance suite.
+        required: false
+        type: number
+        default: 0
+      repo_scope:
+        description: Repository scope selector (reserved for future use).
+        required: false
+        type: string
+        default: ""
+      dry_run:
+        description: If true, evaluate labels without applying them.
+        required: false
+        type: boolean
+        default: false
+      default_track_label:
+        description: Default track label when no explicit track is found.
+        required: false
+        type: string
+        default: "track:release-hardening"
+      default_track_color:
+        description: Color for the default track label.
+        required: false
+        type: string
+        default: "b60205"
+      default_track_description:
+        description: Description for the default track label.
+        required: false
+        type: string
+        default: "Default project track"
+    secrets:
+      project_token:
+        required: false
 
 permissions:
   contents: read
@@ -13,15 +52,23 @@ jobs:
     steps:
       - name: Ensure canonical labels exist
         uses: actions/github-script@v7
+        env:
+          DEFAULT_TRACK_LABEL: ${{ inputs.default_track_label }}
+          DEFAULT_TRACK_COLOR: ${{ inputs.default_track_color }}
+          DEFAULT_TRACK_DESCRIPTION: ${{ inputs.default_track_description }}
         with:
           script: |
+            const defaultTrackLabel = process.env.DEFAULT_TRACK_LABEL || "track:release-hardening";
+            const defaultTrackColor = process.env.DEFAULT_TRACK_COLOR || "b60205";
+            const defaultTrackDescription =
+              process.env.DEFAULT_TRACK_DESCRIPTION || "Default project track";
             const specs = [
               { name: "type:docs", color: "0e8a16", description: "Documentation changes" },
               { name: "type:ci", color: "5319e7", description: "CI/workflow changes" },
               { name: "type:tooling", color: "1d76db", description: "Tooling/scripts/schemas changes" },
               { name: "type:migration", color: "fbca04", description: "Migration/cutover/stabilization changes" },
               { name: "type:governance", color: "d93f0b", description: "Governance/project/policy changes" },
-              { name: "track:release-hardening", color: "b60205", description: "Release hardening track" },
+              { name: defaultTrackLabel, color: defaultTrackColor, description: defaultTrackDescription },
             ];
             for (const spec of specs) {
               try {
@@ -42,7 +89,12 @@ jobs:
               }
             }
       - name: Apply labels from .github/labeler.yml
+        if: ${{ !inputs.dry_run }}
         uses: actions/labeler@v5
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           sync-labels: true
+      - name: Dry run summary
+        if: ${{ inputs.dry_run }}
+        run: |
+          echo "dry_run=true: labeler execution skipped."

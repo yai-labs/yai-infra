@@ -2,6 +2,30 @@ name: reusable-pr-milestone-sync
 
 on:
   workflow_call:
+    inputs:
+      org:
+        description: Organization/owner context for governance suite.
+        required: false
+        type: string
+        default: "yai-labs"
+      project_number:
+        description: Project number context for governance suite.
+        required: false
+        type: number
+        default: 0
+      repo_scope:
+        description: Repository scope selector (reserved for future use).
+        required: false
+        type: string
+        default: ""
+      dry_run:
+        description: If true, report planned milestone sync without applying.
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      project_token:
+        required: false
 
 permissions:
   contents: read
@@ -16,6 +40,7 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            const dryRun = "${{ inputs.dry_run }}" === "true";
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const pr = context.payload.pull_request;
@@ -53,6 +78,10 @@ jobs:
             if (currentMilestone === targetMilestone) {
               core.info(`PR milestone already aligned to '${issue.milestone.title}'.`);
             } else {
+              if (dryRun) {
+                core.info(`dry_run=true: would set PR milestone to '${issue.milestone.title}' from issue #${issueNumber}.`);
+                return;
+              }
               await github.rest.issues.update({
                 owner,
                 repo,

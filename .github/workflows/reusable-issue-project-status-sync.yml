@@ -3,8 +3,8 @@ name: reusable-issue-project-status-sync
 on:
   workflow_call:
     inputs:
-      project_owner:
-        description: Project owner/org login.
+      org:
+        description: Organization/owner login.
         required: false
         type: string
         default: "yai-labs"
@@ -13,6 +13,16 @@ on:
         required: false
         type: number
         default: 5
+      repo_scope:
+        description: Repository scope selector (reserved for future use).
+        required: false
+        type: string
+        default: ""
+      dry_run:
+        description: If true, report intended updates without mutating.
+        required: false
+        type: boolean
+        default: false
     secrets:
       project_token:
         required: false
@@ -34,8 +44,9 @@ jobs:
             const issue = context.payload.issue;
             if (!issue) return;
 
-            const owner = "${{ inputs.project_owner }}" || "yai-labs";
+            const owner = "${{ inputs.org }}" || "yai-labs";
             const projectNumber = Number("${{ inputs.project_number }}" || "5");
+            const dryRun = "${{ inputs.dry_run }}" === "true";
 
             const normalize = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
             const resolveOptionId = (field, desired, aliases = []) => {
@@ -142,17 +153,19 @@ jobs:
             })();
             const classToken = labelSet.has("class:b") ? "B" : "A";
 
-            await setSingle(statusField, statusName, [closed ? "Closed" : "Open"]);
-            await setSingle(gateField, gateName);
-            await setSingle(workTypeField, workType);
-            await setSingle(phaseTypeField, phaseType);
-            if (phaseToken) await setSingle(phaseField, phaseToken);
-            if (trackToken) await setSingle(trackField, trackToken, [trackToken.replace(/-/g, " ")]);
-            await setSingle(classField, classToken);
+            if (!dryRun) {
+              await setSingle(statusField, statusName, [closed ? "Closed" : "Open"]);
+              await setSingle(gateField, gateName);
+              await setSingle(workTypeField, workType);
+              await setSingle(phaseTypeField, phaseType);
+              if (phaseToken) await setSingle(phaseField, phaseToken);
+              if (trackToken) await setSingle(trackField, trackToken, [trackToken.replace(/-/g, " ")]);
+              await setSingle(classField, classToken);
+            }
 
             const targetDateRaw = closed ? (issue.closed_at || null) : (issue.milestone?.due_on || null);
             const targetDate = targetDateRaw ? new Date(targetDateRaw).toISOString().slice(0, 10) : null;
-            if (targetDateField && targetDate) {
+            if (targetDateField && targetDate && !dryRun) {
               await github.graphql(
                 `
                 mutation($projectId:ID!,$itemId:ID!,$fieldId:ID!,$date:Date!){
@@ -166,7 +179,7 @@ jobs:
                 `,
                 { projectId: project.id, itemId: item.id, fieldId: targetDateField.id, date: targetDate }
               );
-            } else if (targetDateField) {
+            } else if (targetDateField && !dryRun) {
               await github.graphql(
                 `
                 mutation($projectId:ID!,$itemId:ID!,$fieldId:ID!){
@@ -181,4 +194,4 @@ jobs:
               );
             }
 
-            core.info(`Issue #${issue.number} synced in project ${owner}#${projectNumber}.`);
+            core.info(`Issue #${issue.number} synced in project ${owner}#${projectNumber}. dry_run=${dryRun}`);
