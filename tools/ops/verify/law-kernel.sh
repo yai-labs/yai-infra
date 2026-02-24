@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-SPECS_CONTRACTS="$ROOT/deps/yai-specs/contracts"
-FORMAL="$ROOT/deps/yai-specs/formal"
-KERNEL="$ROOT/kernel"
+INFRA_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+CORE_ROOT="${YAI_CORE_ROOT:-$INFRA_ROOT}"
+SPECS_CONTRACTS="$CORE_ROOT/deps/yai-specs/contracts"
+FORMAL="$CORE_ROOT/deps/yai-specs/formal"
+KERNEL="$CORE_ROOT/kernel"
 
 TLA_JAR="${TLA_JAR:-$HOME/Developer/tools/tla/tla2tools.jar}"
 
+echo "=== INFRA ROOT: $INFRA_ROOT"
+echo "=== CORE ROOT:  $CORE_ROOT"
 echo "=== CONTRACTS: $SPECS_CONTRACTS"
 echo "=== KERNEL:    $KERNEL"
 echo "=== FORMAL:    $FORMAL"
@@ -18,12 +21,8 @@ if [[ ! -f "$TLA_JAR" ]]; then
   exit 1
 fi
 
-echo "=== GENERATE VAULT ABI"
-cd "$ROOT"
-./tools/dev/gen-vault-abi
-
 echo "=== CHECK GENERATED"
-bash tools/dev/check-generated.sh
+YAI_CORE_ROOT="$CORE_ROOT" bash "$INFRA_ROOT/tools/dev/check-generated.sh"
 
 echo "=== KERNEL BUILD"
 cd "$KERNEL"

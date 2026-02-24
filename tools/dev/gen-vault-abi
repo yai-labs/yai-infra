@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -75,15 +76,16 @@ def render_law_ids(spec: dict, generated: str) -> str:
 
 def main() -> int:
     root = Path(__file__).resolve().parent.parent.parent
+    core_root = Path(os.environ.get("YAI_CORE_ROOT", str(root))).resolve()
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--spec",
-        default=str(root / "deps/yai-specs/specs/vault/schema/vault_abi.json"),
+        default=str(core_root / "deps/yai-specs/specs/vault/schema/vault_abi.json"),
         help="Path to vault ABI spec JSON",
     )
     parser.add_argument(
         "--out-dir",
-        default=str(root),
+        default=str(core_root),
         help="Output root directory",
     )
     args = parser.parse_args()

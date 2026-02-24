@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-SPECS_CONTRACTS="$ROOT/deps/yai-specs/contracts"
-FORMAL="$ROOT/deps/yai-specs/formal"
+INFRA_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+CORE_ROOT="${YAI_CORE_ROOT:-$INFRA_ROOT}"
+SPECS_CONTRACTS="$CORE_ROOT/deps/yai-specs/contracts"
+FORMAL="$CORE_ROOT/deps/yai-specs/formal"
 TLA_JAR="${TLA_JAR:-$HOME/Developer/tools/tla/tla2tools.jar}"
 
-echo "=== CORE ROOT: $ROOT"
+echo "=== INFRA ROOT: $INFRA_ROOT"
+echo "=== CORE ROOT:  $CORE_ROOT"
 echo "=== CONTRACTS: $SPECS_CONTRACTS"
 echo "=== FORMAL:    $FORMAL"
 echo "=== TLA_JAR:   $TLA_JAR"
@@ -17,8 +19,8 @@ if [[ ! -f "$TLA_JAR" ]]; then
 fi
 
 echo "=== CHECK GENERATED"
-cd "$ROOT"
-bash tools/dev/check-generated.sh
+cd "$CORE_ROOT"
+YAI_CORE_ROOT="$CORE_ROOT" bash "$INFRA_ROOT/tools/dev/check-generated.sh"
 
 echo "=== UI NOTE"
 echo "TUI removed from mind; UI verification moved to YX repo pipeline."
@@ -71,7 +73,7 @@ echo "=== TLC DEEP"
 java -XX:+UseParallelGC -jar "$TLA_JAR" -modelcheck tla/YAI_KERNEL.tla -config configs/YAI_KERNEL.deep.cfg
 
 echo "=== BUILD CORE"
-cd "$ROOT"
+cd "$CORE_ROOT"
 make clean
 make all
 

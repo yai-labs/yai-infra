@@ -397,6 +397,10 @@ def build_alignment_snapshot() -> tuple[dict[str, Any], str, list[str]]:
 
 
 def run_architecture_alignment(mode: str, base: str, head: str, write: bool) -> int:
+    if not ARCH_DIR.exists():
+        print("[architecture-check] SKIP: docs/architecture not present in this repo layout")
+        return 0
+
     if mode == "changed" and not base:
         print("[architecture-check] ERROR: --changed requires --base <sha>")
         return 2
