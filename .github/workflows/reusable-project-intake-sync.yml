@@ -1,0 +1,327 @@
+name: reusable-project-intake-sync
+
+on:
+  workflow_call:
+    inputs:
+      project_owner:
+        description: Project owner/org login.
+        required: false
+        type: string
+        default: "yai-labs"
+      project_number:
+        description: Project number.
+        required: false
+        type: number
+        default: 5
+      default_assignee:
+        description: Default assignee login.
+        required: false
+        type: string
+        default: "francescomaiomascio"
+      default_phase:
+        description: Fallback phase when none is inferred.
+        required: false
+        type: string
+        default: "0.1.1"
+      default_track:
+        description: Fallback track when none is inferred.
+        required: false
+        type: string
+        default: "release-hardening"
+      allowed_tracks:
+        description: Comma-separated track names allowed by target project.
+        required: false
+        type: string
+        default: ""
+    secrets:
+      project_token:
+        required: false
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+  repository-projects: write
+
+jobs:
+  intake:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Intake sync (assign + project fields)
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.project_token != '' && secrets.project_token || secrets.YAI_PROJECT_TOKEN != '' && secrets.YAI_PROJECT_TOKEN || github.token }}
+          script: |
+            const OWNER = "${{ inputs.project_owner }}" || "yai-labs";
+            const PROJECT_NUMBER = Number("${{ inputs.project_number }}" || "5");
+            const DEFAULT_ASSIGNEE = "${{ inputs.default_assignee }}" || "francescomaiomascio";
+            const DEFAULT_PHASE = "${{ inputs.default_phase }}" || "0.1.1";
+            const DEFAULT_TRACK = "${{ inputs.default_track }}" || "release-hardening";
+            const ALLOWED_TRACKS = ("${{ inputs.allowed_tracks }}" || "")
+              .split(",")
+              .map((x) => x.trim())
+              .filter(Boolean);
+
+            const normalize = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+            const resolveOptionId = (field, desired, aliases = []) => {
+              if (!field || !field.options) return null;
+              const candidates = [desired, ...aliases].map(normalize).filter(Boolean);
+              for (const cand of candidates) {
+                const opt = field.options.find((o) => normalize(o.name) === cand);
+                if (opt) return opt.id;
+              }
+              return null;
+            };
+            const isAllowedTrack = (t) => !ALLOWED_TRACKS.length || ALLOWED_TRACKS.includes(t);
+
+            const isIssue = context.eventName === "issues";
+            const node = isIssue ? context.payload.issue : context.payload.pull_request;
+            if (!node) return;
+
+            const number = node.number;
+            const contentId = node.node_id;
+            const labels = (node.labels || []).map((l) => (l.name || "").toLowerCase());
+            let milestone = node.milestone || null;
+            const textBlob = `${node.title || ""}\n${node.body || ""}`;
+            const phaseToken = (textBlob.match(/\b0\.\d+\.\d+\b/) || [null])[0] || DEFAULT_PHASE;
+
+            if (!milestone) {
+              try {
+                const ms = await github.rest.issues.listMilestones({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  state: "all",
+                  per_page: 100,
+                });
+                const candidates = (ms.data || []).filter((m) => (m.title || "").includes(phaseToken));
+                if (candidates.length > 0) {
+                  candidates.sort((a, b) => {
+                    const sa = a.state === "open" ? 0 : 1;
+                    const sb = b.state === "open" ? 0 : 1;
+                    if (sa !== sb) return sa - sb;
+                    const da = a.due_on || "9999-12-31T00:00:00Z";
+                    const db = b.due_on || "9999-12-31T00:00:00Z";
+                    return da.localeCompare(db);
+                  });
+                  const chosen = candidates[0];
+                  await github.rest.issues.update({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: number,
+                    milestone: chosen.number,
+                  });
+                  milestone = { title: chosen.title, due_on: chosen.due_on };
+                }
+              } catch (err) {
+                core.warning(`Auto-milestone skipped: ${err.message}`);
+              }
+            }
+
+            const phase = (() => {
+              const m = (milestone?.title || "").match(/\b0\.\d+\.\d+\b/);
+              return m ? m[0] : phaseToken;
+            })();
+
+            const inferTrackFromText = (title, body, milestoneTitle) => {
+              const blob = `${title || ""}\n${body || ""}\n${milestoneTitle || ""}`.toLowerCase();
+              const candidates = [
+                "contract-baseline-lock",
+                "specs-refactor-foundation",
+                "audit-convergence",
+                "release-hardening",
+                "cutover-wave",
+                "infra-bootstrap",
+                "stabilization",
+              ];
+              for (const t of candidates) {
+                if (blob.includes(t)) return t;
+              }
+              return null;
+            };
+
+            const track = (() => {
+              const trackLabel = labels.find((l) => l.startsWith("track:"));
+              const fromLabel = trackLabel ? trackLabel.replace(/^track:/, "") : null;
+              if (fromLabel && isAllowedTrack(fromLabel)) return fromLabel;
+              const fromText = inferTrackFromText(node.title, node.body, milestone?.title || "");
+              if (fromText && isAllowedTrack(fromText)) return fromText;
+              return DEFAULT_TRACK;
+            })();
+
+            const className = (() => {
+              if (labels.includes("class:b")) return "B";
+              const t = `${node.title || ""}\n${node.body || ""}`.toLowerCase();
+              if (t.includes("blocker")) return "B";
+              return "A";
+            })();
+
+            const isClosed = node.state === "closed";
+            const merged = !isIssue ? !!node.merged : false;
+            const closedDate = isIssue ? node.closed_at : (node.merged_at || node.closed_at);
+            const targetDateRaw = isClosed ? (closedDate || null) : (milestone?.due_on || null);
+            const targetDate = targetDateRaw ? new Date(targetDateRaw).toISOString().slice(0, 10) : null;
+
+            const isMpClosure = isIssue && (node.title || "").toLowerCase().startsWith("mp-closure:");
+            const isRunbook = isIssue && (node.title || "").toLowerCase().startsWith("runbook:");
+            const statusName = isClosed ? "Done" : (isRunbook ? "Todo" : "In Progress");
+            const gateName = isClosed ? (isIssue || merged ? "Passed" : "Failed") : (isRunbook ? "Not Started" : "Running");
+            const workTypeName = isIssue ? (isMpClosure ? "MP Closure" : "Issue") : "PR";
+            const phaseTypeName = isIssue
+              ? (isMpClosure ? "MP Closure" : (isRunbook ? "Phase Issue" : "Execution Issue"))
+              : "PR";
+            const typeName = (() => {
+              if (labels.includes("type:migration")) return "Migration";
+              if (labels.includes("type:governance")) return "Governance";
+              if (labels.includes("type:tooling")) return "Tooling";
+              if (labels.includes("type:ci")) return "CI";
+              if (labels.includes("type:docs")) return "Docs";
+              return isIssue ? "Issue" : "PR";
+            })();
+
+            try {
+              await github.rest.issues.addAssignees({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: number,
+                assignees: [DEFAULT_ASSIGNEE],
+              });
+            } catch (err) {
+              core.warning(`Auto-assign skipped: ${err.message}`);
+            }
+
+            // Ensure baseline semantic labels exist on issue/PR.
+            const inferredTypeLabel = (() => {
+              const txt = `${node.title || ""}\n${node.body || ""}`.toLowerCase();
+              if (/\bci\b|workflow|github actions?|pipeline/.test(txt)) return "type:ci";
+              if (/tools?|script|schema|lint|verify|wrapper/.test(txt)) return "type:tooling";
+              if (/migration|cutover|stabilization|hardening/.test(txt)) return "type:migration";
+              if (/docs?|runbook|adr|rfc|proposal|program|milestone/.test(txt)) return "type:docs";
+              return "type:governance";
+            })();
+
+            const desiredLabels = new Set([`track:${track}`, inferredTypeLabel]);
+            try {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: number,
+                labels: Array.from(desiredLabels),
+              });
+            } catch (err) {
+              core.warning(`Label sync skipped: ${err.message}`);
+            }
+
+            const projectRes = await github.graphql(
+              `
+              query($owner:String!,$number:Int!){
+                organization(login:$owner){
+                  projectV2(number:$number){
+                    id
+                    fields(first:100){
+                      nodes{
+                        ... on ProjectV2FieldCommon{ id name }
+                        ... on ProjectV2SingleSelectField{ id name options{ id name } }
+                      }
+                    }
+                  }
+                }
+              }
+              `,
+              { owner: OWNER, number: PROJECT_NUMBER }
+            );
+            const project = projectRes.organization?.projectV2;
+            if (!project) {
+              core.setFailed(`Project not found: ${OWNER}#${PROJECT_NUMBER}`);
+              return;
+            }
+
+            const itemRes = await github.graphql(
+              `
+              mutation($projectId:ID!,$contentId:ID!){
+                addProjectV2ItemById(input:{ projectId:$projectId, contentId:$contentId }){ item{ id } }
+              }
+              `,
+              { projectId: project.id, contentId }
+            ).catch(() => null);
+
+            const getItemsRes = await github.graphql(
+              `
+              query($id:ID!){
+                node(id:$id){
+                  ... on Issue{ projectItems(first:50){ nodes{ id project{ id } } } }
+                  ... on PullRequest{ projectItems(first:50){ nodes{ id project{ id } } } }
+                }
+              }
+              `,
+              { id: contentId }
+            );
+            const items = getItemsRes.node?.projectItems?.nodes || [];
+            const item = items.find((i) => i.project?.id === project.id) || itemRes?.addProjectV2ItemById?.item;
+            if (!item) {
+              core.setFailed(`Unable to find/create project item for #${number}.`);
+              return;
+            }
+
+            const fields = project.fields.nodes || [];
+            const fieldByName = (name) => fields.find((f) => f?.name === name);
+            const setSingle = async (fieldName, optionName, aliases = []) => {
+              const field = fieldByName(fieldName);
+              const opt = resolveOptionId(field, optionName, aliases);
+              if (!field || !opt) return;
+              await github.graphql(
+                `
+                mutation($projectId:ID!,$itemId:ID!,$fieldId:ID!,$optionId:String!){
+                  updateProjectV2ItemFieldValue(input:{
+                    projectId:$projectId,
+                    itemId:$itemId,
+                    fieldId:$fieldId,
+                    value:{ singleSelectOptionId:$optionId }
+                  }){ projectV2Item{ id } }
+                }
+                `,
+                { projectId: project.id, itemId: item.id, fieldId: field.id, optionId: opt }
+              );
+            };
+
+            await setSingle("Status", statusName, [isClosed ? "Closed" : "Open"]);
+            await setSingle("Gate Status", gateName);
+            await setSingle("Phase", phase);
+            await setSingle("Track", track, [track.replace(/-/g, " "), DEFAULT_TRACK]);
+            await setSingle("Work Type", workTypeName);
+            await setSingle("Type", typeName, [workTypeName, isIssue ? "Task" : "Change"]);
+            await setSingle("Phase Type", phaseTypeName);
+            await setSingle("Class", className);
+
+            const targetField = fieldByName("Target Date");
+            if (targetField && targetDate) {
+              await github.graphql(
+                `
+                mutation($projectId:ID!,$itemId:ID!,$fieldId:ID!,$date:Date!){
+                  updateProjectV2ItemFieldValue(input:{
+                    projectId:$projectId,
+                    itemId:$itemId,
+                    fieldId:$fieldId,
+                    value:{ date:$date }
+                  }){ projectV2Item{ id } }
+                }
+                `,
+                { projectId: project.id, itemId: item.id, fieldId: targetField.id, date: targetDate }
+              );
+            } else if (targetField) {
+              await github.graphql(
+                `
+                mutation($projectId:ID!,$itemId:ID!,$fieldId:ID!){
+                  clearProjectV2ItemFieldValue(input:{
+                    projectId:$projectId,
+                    itemId:$itemId,
+                    fieldId:$fieldId
+                  }){ projectV2Item{ id } }
+                }
+                `,
+                { projectId: project.id, itemId: item.id, fieldId: targetField.id }
+              );
+            }
+
+            core.info(
+              `Intake synced for #${number}: status=${statusName}, gate=${gateName}, phase=${phase}, track=${track}.`
+            );

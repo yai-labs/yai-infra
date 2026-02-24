@@ -1,0 +1,94 @@
+name: reusable-auto-label-issue
+
+on:
+  workflow_call:
+    inputs:
+      default_track_label:
+        description: Default track label when no track:* label is inferred.
+        required: false
+        type: string
+        default: "track:release-hardening"
+      default_track_color:
+        description: Color for the default track label.
+        required: false
+        type: string
+        default: "b60205"
+      default_track_description:
+        description: Description for the default track label.
+        required: false
+        type: string
+        default: "Default project track"
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Apply semantic labels to issues
+        uses: actions/github-script@v7
+        env:
+          DEFAULT_TRACK_LABEL: ${{ inputs.default_track_label }}
+          DEFAULT_TRACK_COLOR: ${{ inputs.default_track_color }}
+          DEFAULT_TRACK_DESCRIPTION: ${{ inputs.default_track_description }}
+        with:
+          script: |
+            const issue = context.payload.issue;
+            if (!issue) return;
+
+            const defaultTrackLabel = process.env.DEFAULT_TRACK_LABEL || "track:release-hardening";
+            const defaultTrackColor = process.env.DEFAULT_TRACK_COLOR || "b60205";
+            const defaultTrackDescription =
+              process.env.DEFAULT_TRACK_DESCRIPTION || "Default project track";
+
+            const specs = [
+              { name: "type:docs", color: "0e8a16", description: "Documentation changes" },
+              { name: "type:ci", color: "5319e7", description: "CI/workflow changes" },
+              { name: "type:tooling", color: "1d76db", description: "Tooling/scripts/schemas changes" },
+              { name: "type:migration", color: "fbca04", description: "Migration/cutover/stabilization changes" },
+              { name: "type:governance", color: "d93f0b", description: "Governance/project/policy changes" },
+              { name: defaultTrackLabel, color: defaultTrackColor, description: defaultTrackDescription },
+            ];
+
+            for (const spec of specs) {
+              try {
+                await github.rest.issues.getLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: spec.name,
+                });
+              } catch (err) {
+                if (err.status !== 404) throw err;
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: spec.name,
+                  color: spec.color,
+                  description: spec.description,
+                });
+              }
+            }
+
+            const text = `${issue.title || ""}\n${issue.body || ""}`.toLowerCase();
+            const labels = new Set();
+
+            if (/\bci\b|workflow|github actions?|pipeline/.test(text)) labels.add("type:ci");
+            if (/docs?|runbook|migration|governance|policy|adr|rfc|proposal/.test(text)) labels.add("type:docs");
+            if (/tools?|script|schema|lint|verify|wrapper/.test(text)) labels.add("type:tooling");
+            if (/migration|cutover|rollback|stabilization|hardening/.test(text)) labels.add("type:migration");
+            if (/governance|policy|project field|milestone|epic|sub-issue/.test(text)) labels.add("type:governance");
+
+            const existing = new Set((issue.labels || []).map((l) => l.name || ""));
+            const hasTrack = Array.from(existing).some((l) => l.startsWith("track:"));
+            const inferredTrack = Array.from(labels).find((l) => l.startsWith("track:"));
+            if (!hasTrack && !inferredTrack) labels.add(defaultTrackLabel);
+
+            if (labels.size === 0) return;
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              labels: Array.from(labels),
+            });
