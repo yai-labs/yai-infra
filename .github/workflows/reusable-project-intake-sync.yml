@@ -3,8 +3,8 @@ name: reusable-project-intake-sync
 on:
   workflow_call:
     inputs:
-      project_owner:
-        description: Project owner/org login.
+      org:
+        description: Organization/owner login.
         required: false
         type: string
         default: "yai-labs"
@@ -33,6 +33,16 @@ on:
         required: false
         type: string
         default: ""
+      repo_scope:
+        description: Repository scope selector (reserved for future use).
+        required: false
+        type: string
+        default: ""
+      dry_run:
+        description: If true, report intended updates without mutating resources.
+        required: false
+        type: boolean
+        default: false
     secrets:
       project_token:
         required: false
@@ -52,11 +62,12 @@ jobs:
         with:
           github-token: ${{ secrets.project_token != '' && secrets.project_token || secrets.YAI_PROJECT_TOKEN != '' && secrets.YAI_PROJECT_TOKEN || github.token }}
           script: |
-            const OWNER = "${{ inputs.project_owner }}" || "yai-labs";
+            const OWNER = "${{ inputs.org }}" || "yai-labs";
             const PROJECT_NUMBER = Number("${{ inputs.project_number }}" || "5");
             const DEFAULT_ASSIGNEE = "${{ inputs.default_assignee }}" || "francescomaiomascio";
             const DEFAULT_PHASE = "${{ inputs.default_phase }}" || "0.1.1";
             const DEFAULT_TRACK = "${{ inputs.default_track }}" || "release-hardening";
+            const DRY_RUN = "${{ inputs.dry_run }}" === "true";
             const ALLOWED_TRACKS = ("${{ inputs.allowed_tracks }}" || "")
               .split(",")
               .map((x) => x.trim())
@@ -178,15 +189,17 @@ jobs:
               return isIssue ? "Issue" : "PR";
             })();
 
-            try {
-              await github.rest.issues.addAssignees({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: number,
-                assignees: [DEFAULT_ASSIGNEE],
-              });
-            } catch (err) {
-              core.warning(`Auto-assign skipped: ${err.message}`);
+            if (!DRY_RUN) {
+              try {
+                await github.rest.issues.addAssignees({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: number,
+                  assignees: [DEFAULT_ASSIGNEE],
+                });
+              } catch (err) {
+                core.warning(`Auto-assign skipped: ${err.message}`);
+              }
             }
 
             // Ensure baseline semantic labels exist on issue/PR.
@@ -200,15 +213,17 @@ jobs:
             })();
 
             const desiredLabels = new Set([`track:${track}`, inferredTypeLabel]);
-            try {
-              await github.rest.issues.addLabels({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: number,
-                labels: Array.from(desiredLabels),
-              });
-            } catch (err) {
-              core.warning(`Label sync skipped: ${err.message}`);
+            if (!DRY_RUN) {
+              try {
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: number,
+                  labels: Array.from(desiredLabels),
+                });
+              } catch (err) {
+                core.warning(`Label sync skipped: ${err.message}`);
+              }
             }
 
             const projectRes = await github.graphql(
@@ -235,7 +250,7 @@ jobs:
               return;
             }
 
-            const itemRes = await github.graphql(
+            const itemRes = DRY_RUN ? null : await github.graphql(
               `
               mutation($projectId:ID!,$contentId:ID!){
                 addProjectV2ItemById(input:{ projectId:$projectId, contentId:$contentId }){ item{ id } }
@@ -268,6 +283,10 @@ jobs:
               const field = fieldByName(fieldName);
               const opt = resolveOptionId(field, optionName, aliases);
               if (!field || !opt) return;
+              if (DRY_RUN) {
+                core.info(`dry_run=true: would set = on item #`);
+                return;
+              }
               await github.graphql(
                 `
                 mutation($projectId:ID!,$itemId:ID!,$fieldId:ID!,$optionId:String!){
@@ -293,7 +312,7 @@ jobs:
             await setSingle("Class", className);
 
             const targetField = fieldByName("Target Date");
-            if (targetField && targetDate) {
+            if (targetField && targetDate && !DRY_RUN) {
               await github.graphql(
                 `
                 mutation($projectId:ID!,$itemId:ID!,$fieldId:ID!,$date:Date!){
@@ -307,7 +326,7 @@ jobs:
                 `,
                 { projectId: project.id, itemId: item.id, fieldId: targetField.id, date: targetDate }
               );
-            } else if (targetField) {
+            } else if (targetField && !DRY_RUN) {
               await github.graphql(
                 `
                 mutation($projectId:ID!,$itemId:ID!,$fieldId:ID!){
@@ -320,6 +339,13 @@ jobs:
                 `,
                 { projectId: project.id, itemId: item.id, fieldId: targetField.id }
               );
+            }
+
+            if (DRY_RUN) {
+              core.info(
+                `dry_run=true: intake computed for #${number}: status=${statusName}, gate=${gateName}, phase=${phase}, track=${track}.`
+              );
+              return;
             }
 
             core.info(

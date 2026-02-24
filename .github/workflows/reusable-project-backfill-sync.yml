@@ -3,8 +3,8 @@ name: reusable-project-backfill-sync
 on:
   workflow_call:
     inputs:
-      project_owner:
-        description: Project owner/org login.
+      org:
+        description: Organization/owner login.
         required: false
         type: string
         default: "yai-labs"
@@ -33,6 +33,16 @@ on:
         required: false
         type: string
         default: ""
+      repo_scope:
+        description: Repository scope selector ('*' for all repos in project).
+        required: false
+        type: string
+        default: ""
+      dry_run:
+        description: If true, report planned changes without mutating.
+        required: false
+        type: boolean
+        default: false
     secrets:
       project_token:
         required: false
@@ -55,11 +65,13 @@ jobs:
         with:
           github-token: ${{ secrets.project_token != '' && secrets.project_token || secrets.YAI_PROJECT_TOKEN != '' && secrets.YAI_PROJECT_TOKEN || github.token }}
           script: |
-            const OWNER = "${{ inputs.project_owner }}" || "yai-labs";
+            const OWNER = "${{ inputs.org }}" || "yai-labs";
             const PROJECT_NUMBER = Number("${{ inputs.project_number }}" || "5");
             const DEFAULT_PHASE = "${{ inputs.default_phase }}" || "0.1.1";
             const DEFAULT_TRACK = "${{ inputs.default_track }}" || "release-hardening";
             const DEFAULT_ASSIGNEE = "${{ inputs.default_assignee }}" || "francescomaiomascio";
+            const REPO_SCOPE = "${{ inputs.repo_scope }}" || "";
+            const DRY_RUN = "${{ inputs.dry_run }}" === "true";
             const ALLOWED_TRACKS = ("${{ inputs.allowed_tracks }}" || "")
               .split(",")
               .map((x) => x.trim())
@@ -109,6 +121,7 @@ jobs:
               const field = byName(fieldName);
               const optionId = resolveOptionId(field, value, aliases);
               if (!field || !optionId) return;
+              if (DRY_RUN) return;
               await github.graphql(
                 `
                 mutation($projectId:ID!,$itemId:ID!,$fieldId:ID!,$optionId:String!){
@@ -127,6 +140,7 @@ jobs:
             const setDate = async (itemId, date) => {
               const field = byName("Target Date");
               if (!field) return;
+              if (DRY_RUN) return;
               if (!date) {
                 await github.graphql(
                   `
@@ -233,36 +247,41 @@ jobs:
             for (const item of items) {
               const c = item.content;
               if (!c || (c.__typename !== "Issue" && c.__typename !== "PullRequest")) continue;
-              if (c.repository?.nameWithOwner !== `${context.repo.owner}/${context.repo.repo}`) continue;
+              if (REPO_SCOPE && REPO_SCOPE !== "*" && c.repository?.nameWithOwner !== REPO_SCOPE) continue;
+              if (!REPO_SCOPE && c.repository?.nameWithOwner !== `${context.repo.owner}/${context.repo.repo}`) continue;
 
               const isIssue = c.__typename === "Issue";
               const labels = (c.labels?.nodes || []).map((x) => (x.name || "").toLowerCase());
               const track = inferTrack(labels, c.title, c.body, c.milestone?.title || "");
               const typeLabel = inferTypeLabel(c.title, c.body, isIssue);
 
-              try {
-                await github.rest.issues.addLabels({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: c.number,
-                  labels: [`track:${track}`, typeLabel],
-                });
-              } catch (err) {
-                core.warning(`Label sync skipped for #${c.number}: ${err.message}`);
-              }
-
-              try {
-                const current = (c.assignees?.nodes || []).map((a) => a.login);
-                if (!current.includes(DEFAULT_ASSIGNEE)) {
-                  await github.rest.issues.addAssignees({
+              if (!DRY_RUN) {
+                try {
+                  await github.rest.issues.addLabels({
                     owner: context.repo.owner,
                     repo: context.repo.repo,
                     issue_number: c.number,
-                    assignees: [DEFAULT_ASSIGNEE],
+                    labels: [`track:${track}`, typeLabel],
                   });
+                } catch (err) {
+                  core.warning(`Label sync skipped for #${c.number}: ${err.message}`);
                 }
-              } catch (err) {
-                core.warning(`Assignee sync skipped for #${c.number}: ${err.message}`);
+              }
+
+              if (!DRY_RUN) {
+                try {
+                  const current = (c.assignees?.nodes || []).map((a) => a.login);
+                  if (!current.includes(DEFAULT_ASSIGNEE)) {
+                    await github.rest.issues.addAssignees({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      issue_number: c.number,
+                      assignees: [DEFAULT_ASSIGNEE],
+                    });
+                  }
+                } catch (err) {
+                  core.warning(`Assignee sync skipped for #${c.number}: ${err.message}`);
+                }
               }
 
               const stateClosed = c.state === "CLOSED" || c.state === "MERGED";
@@ -298,4 +317,4 @@ jobs:
               processed += 1;
             }
 
-            core.info(`Project backfill completed. Items processed: ${processed}`);
+            core.info(`Project backfill completed. Items processed: ${processed}. dry_run=${DRY_RUN}`);

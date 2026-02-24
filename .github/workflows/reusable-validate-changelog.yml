@@ -3,12 +3,35 @@ name: reusable-validate-changelog
 on:
   workflow_call:
     inputs:
+      org:
+        description: Organization/owner context for governance suite.
+        required: false
+        type: string
+        default: "yai-labs"
+      project_number:
+        description: Project number context for governance suite.
+        required: false
+        type: number
+        default: 0
+      repo_scope:
+        description: Repository scope selector (reserved for future use).
+        required: false
+        type: string
+        default: ""
+      dry_run:
+        description: If true, execute read-only lint checks only.
+        required: false
+        type: boolean
+        default: false
       base_sha:
         required: true
         type: string
       head_sha:
         required: true
         type: string
+    secrets:
+      project_token:
+        required: false
 
 jobs:
   changelog-pr:

@@ -3,6 +3,26 @@ name: reusable-verify-github-templates
 on:
   workflow_call:
     inputs:
+      org:
+        description: Organization/owner context for governance suite.
+        required: false
+        type: string
+        default: "yai-labs"
+      project_number:
+        description: Project number context for governance suite.
+        required: false
+        type: number
+        default: 0
+      repo_scope:
+        description: Repository scope selector (reserved for future use).
+        required: false
+        type: string
+        default: ""
+      dry_run:
+        description: If true, print drift diff without failing.
+        required: false
+        type: boolean
+        default: false
       infra_repo:
         required: false
         type: string
@@ -11,6 +31,9 @@ on:
         required: false
         type: string
         default: main
+    secrets:
+      project_token:
+        required: false
 
 jobs:
   verify-template-sync:
@@ -33,6 +56,8 @@ jobs:
 
       - name: Compare GitHub templates with infra canonical
         shell: bash
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
           set -euo pipefail
           CANONICAL_ROOT=".infra-canonical/governance/templates/github"
@@ -52,6 +77,10 @@ jobs:
             if ! diff -ruN "$src" "$dst" > /tmp/template-diff.txt; then
               echo "Template drift detected for: $rel" >&2
               cat /tmp/template-diff.txt >&2
+              if [[ "${DRY_RUN}" == "true" ]]; then
+                echo "dry_run=true: drift reported without failure"
+                return 0
+              fi
               exit 1
             fi
           }

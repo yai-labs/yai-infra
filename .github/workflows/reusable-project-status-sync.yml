@@ -3,7 +3,7 @@ name: reusable-project-status-sync
 on:
   workflow_call:
     inputs:
-      project_owner:
+      org:
         required: false
         type: string
         default: yai-labs
@@ -11,15 +11,26 @@ on:
         required: false
         type: number
         default: 5
-      pr_number:
-        required: true
-        type: number
-      pr_node_id:
-        required: true
+      repo_scope:
+        required: false
         type: string
-      pr_merged:
-        required: true
+        default: ""
+      dry_run:
+        required: false
         type: boolean
+        default: false
+      pr_number:
+        required: false
+        type: number
+        default: 0
+      pr_node_id:
+        required: false
+        type: string
+        default: ""
+      pr_merged:
+        required: false
+        type: boolean
+        default: false
       pr_milestone_due_on:
         required: false
         type: string
@@ -43,16 +54,22 @@ jobs:
       - name: Sync project status for closed PR
         uses: actions/github-script@v7
         env:
-          PROJECT_OWNER: ${{ inputs.project_owner }}
+          PROJECT_OWNER: ${{ inputs.org }}
           PROJECT_NUMBER: ${{ inputs.project_number }}
         with:
           github-token: ${{ secrets.project_token || secrets.YAI_PROJECT_TOKEN || github.token }}
           script: |
             const owner = process.env.PROJECT_OWNER;
             const projectNumber = Number(process.env.PROJECT_NUMBER || "5");
-            const prNumber = Number("${{ inputs.pr_number }}");
-            const prNodeId = "${{ inputs.pr_node_id }}";
-            const merged = "${{ inputs.pr_merged }}" === "true";
+            const dryRun = "${{ inputs.dry_run }}" === "true";
+            const payloadPr = context.payload.pull_request || null;
+            const prNumber = payloadPr?.number || Number("${{ inputs.pr_number }}");
+            const prNodeId = payloadPr?.node_id || "${{ inputs.pr_node_id }}";
+            const merged = payloadPr ? !!payloadPr.merged : ("${{ inputs.pr_merged }}" === "true");
+            if (!prNodeId) {
+              core.info("No pull_request context or explicit PR inputs provided; skipping.");
+              return;
+            }
             const normalize = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
             const resolveOptionId = (field, desired, aliases = []) => {
               if (!field || !field.options) return null;
@@ -156,14 +173,16 @@ jobs:
               }
             `;
 
-            await github.graphql(updateMutation, {
-              projectId: project.id,
-              itemId: item.id,
-              fieldId: statusField.id,
-              optionId: doneOptId,
-            });
+            if (!dryRun) {
+              await github.graphql(updateMutation, {
+                projectId: project.id,
+                itemId: item.id,
+                fieldId: statusField.id,
+                optionId: doneOptId,
+              });
+            }
 
-            if (gateField && gateOptId) {
+            if (!dryRun && gateField && gateOptId) {
               await github.graphql(updateMutation, {
                 projectId: project.id,
                 itemId: item.id,
@@ -172,7 +191,7 @@ jobs:
               });
             }
             const prOptId = resolveOptionId(workTypeField, "PR", ["Pull Request"]);
-            if (workTypeField && prOptId) {
+            if (!dryRun && workTypeField && prOptId) {
               await github.graphql(updateMutation, {
                 projectId: project.id,
                 itemId: item.id,
@@ -181,7 +200,7 @@ jobs:
               });
             }
             const typePrOptId = resolveOptionId(typeField, "PR", ["Pull Request", "Change"]);
-            if (typeField && typePrOptId) {
+            if (!dryRun && typeField && typePrOptId) {
               await github.graphql(updateMutation, {
                 projectId: project.id,
                 itemId: item.id,
@@ -190,13 +209,13 @@ jobs:
               });
             }
 
-            const milestoneDueRaw = "${{ inputs.pr_milestone_due_on }}";
+            const milestoneDueRaw = payloadPr?.milestone?.due_on || "${{ inputs.pr_milestone_due_on }}";
             const milestoneDue = milestoneDueRaw && milestoneDueRaw !== "null" ? milestoneDueRaw : null;
-            const closedAtRaw = "${{ inputs.pr_closed_at }}";
+            const closedAtRaw = payloadPr?.closed_at || "${{ inputs.pr_closed_at }}";
             const closedAt = closedAtRaw && closedAtRaw !== "null" ? closedAtRaw : null;
             const targetDateRaw = closedAt || milestoneDue || null;
             const targetDate = targetDateRaw ? new Date(targetDateRaw).toISOString().slice(0, 10) : null;
-            if (targetDateField && targetDate) {
+            if (targetDateField && targetDate && !dryRun) {
               await github.graphql(
                 `
                 mutation($projectId:ID!,$itemId:ID!,$fieldId:ID!,$date:Date!){
@@ -217,7 +236,7 @@ jobs:
                   date: targetDate,
                 }
               );
-            } else if (targetDateField) {
+            } else if (targetDateField && !dryRun) {
               await github.graphql(
                 `
                 mutation($projectId:ID!,$itemId:ID!,$fieldId:ID!){
@@ -239,5 +258,5 @@ jobs:
             }
 
             core.info(
-              `Updated project item for PR #${prNumber}: Status=Done, Gate Status=${gateName}, Target Date=${targetDate || "unchanged"}.`
+              `Updated project item for PR #${prNumber}: Status=Done, Gate Status=${gateName}, Target Date=${targetDate || "unchanged"}, dry_run=${dryRun}.`
             );
