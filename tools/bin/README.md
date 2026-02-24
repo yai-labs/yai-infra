@@ -8,6 +8,7 @@ Provide stable, easy-to-remember commands for verify, gate, suite, diagnostics, 
 
 ## Commands
 
+- `yai-version`: prints canonical toolkit version/commit for CI debug.
 - `yai-verify`: runs checks from `tools/ops/verify/`.
 - `yai-gate`: runs gates from `tools/ops/gate/`.
 - `yai-suite`: runs suites from `tools/ops/suite/`.
@@ -33,6 +34,7 @@ Provide stable, easy-to-remember commands for verify, gate, suite, diagnostics, 
 
 ## Quick Start
 
+- `tools/bin/yai-version`
 - `tools/bin/yai-dev-branch --type feat --issue 123 --area root --desc hardening-forward`
 - `tools/bin/yai-dev-pr-body --template default --issue 123 --mp-id MP-ROOT-HARDENING-0.1.0 --runbook docs/runbooks/root-hardening.md#phase-0-1-0-protocol-guardrails --out .pr/PR_BODY.md`
 - `tools/bin/yai-dev-pr-check .pr/PR_BODY.md`
