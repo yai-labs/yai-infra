@@ -1,0 +1,184 @@
+name: reusable-issue-project-status-sync
+
+on:
+  workflow_call:
+    inputs:
+      project_owner:
+        description: Project owner/org login.
+        required: false
+        type: string
+        default: "yai-labs"
+      project_number:
+        description: Project number.
+        required: false
+        type: number
+        default: 5
+    secrets:
+      project_token:
+        required: false
+
+permissions:
+  contents: read
+  issues: read
+  repository-projects: write
+
+jobs:
+  sync-issue-item:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sync project fields for issue
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.project_token != '' && secrets.project_token || secrets.YAI_PROJECT_TOKEN != '' && secrets.YAI_PROJECT_TOKEN || github.token }}
+          script: |
+            const issue = context.payload.issue;
+            if (!issue) return;
+
+            const owner = "${{ inputs.project_owner }}" || "yai-labs";
+            const projectNumber = Number("${{ inputs.project_number }}" || "5");
+
+            const normalize = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+            const resolveOptionId = (field, desired, aliases = []) => {
+              if (!field || !field.options) return null;
+              const candidates = [desired, ...aliases].map(normalize).filter(Boolean);
+              for (const cand of candidates) {
+                const opt = field.options.find((o) => normalize(o.name) === cand);
+                if (opt) return opt.id;
+              }
+              return null;
+            };
+
+            const projectRes = await github.graphql(
+              `
+              query($owner:String!,$number:Int!){
+                organization(login:$owner){
+                  projectV2(number:$number){
+                    id
+                    fields(first:100){
+                      nodes{
+                        ... on ProjectV2FieldCommon{ id name }
+                        ... on ProjectV2SingleSelectField{ id name options{ id name } }
+                      }
+                    }
+                  }
+                }
+              }
+              `,
+              { owner, number: projectNumber }
+            );
+
+            const project = projectRes.organization?.projectV2;
+            if (!project) {
+              core.setFailed(`Project not found: ${owner}#${projectNumber}`);
+              return;
+            }
+
+            const issueNodeRes = await github.graphql(
+              `
+              query($id:ID!){
+                node(id:$id){
+                  ... on Issue{
+                    projectItems(first:50){ nodes{ id project{ id } } }
+                  }
+                }
+              }
+              `,
+              { id: issue.node_id }
+            );
+
+            const items = issueNodeRes.node?.projectItems?.nodes || [];
+            const item = items.find((i) => i.project?.id === project.id);
+            if (!item) {
+              core.info(`Issue #${issue.number} is not in target project; skipping.`);
+              return;
+            }
+
+            const fields = project.fields.nodes || [];
+            const byName = (name) => fields.find((f) => f?.name === name);
+            const statusField = byName("Status");
+            const gateField = byName("Gate Status");
+            const targetDateField = byName("Target Date");
+            const workTypeField = byName("Work Type");
+            const phaseTypeField = byName("Phase Type");
+            const phaseField = byName("Phase");
+            const trackField = byName("Track");
+            const classField = byName("Class");
+
+            const setSingle = async (field, value, aliases = []) => {
+              const optId = resolveOptionId(field, value, aliases);
+              if (!field || !optId) return;
+              await github.graphql(
+                `
+                mutation($projectId:ID!,$itemId:ID!,$fieldId:ID!,$optionId:String!){
+                  updateProjectV2ItemFieldValue(input:{
+                    projectId:$projectId,
+                    itemId:$itemId,
+                    fieldId:$fieldId,
+                    value:{ singleSelectOptionId:$optionId }
+                  }){ projectV2Item{ id } }
+                }
+                `,
+                { projectId: project.id, itemId: item.id, fieldId: field.id, optionId: optId }
+              );
+            };
+
+            const closed = issue.state === "closed";
+            const isRunbook = (issue.title || "").toLowerCase().startsWith("runbook:");
+            const isMpClosure = (issue.title || "").toLowerCase().startsWith("mp-closure:");
+            const labelSet = new Set((issue.labels || []).map((l) => (l.name || "").toLowerCase()));
+
+            const statusName = closed ? "Done" : (isRunbook ? "Todo" : "In Progress");
+            const gateName = closed ? "Passed" : (isRunbook ? "Not Started" : "Running");
+            const workType = isMpClosure ? "MP Closure" : "Issue";
+            const phaseType = isMpClosure ? "MP Closure" : (isRunbook ? "Phase Issue" : "Execution Issue");
+
+            const phaseToken = (() => {
+              const m = (issue.milestone?.title || "").match(/\b0\.\d+\.\d+\b/);
+              return m ? m[0] : null;
+            })();
+            const trackToken = (() => {
+              const trackLabel = Array.from(labelSet).find((x) => x.startsWith("track:"));
+              return trackLabel ? trackLabel.replace(/^track:/, "") : null;
+            })();
+            const classToken = labelSet.has("class:b") ? "B" : "A";
+
+            await setSingle(statusField, statusName, [closed ? "Closed" : "Open"]);
+            await setSingle(gateField, gateName);
+            await setSingle(workTypeField, workType);
+            await setSingle(phaseTypeField, phaseType);
+            if (phaseToken) await setSingle(phaseField, phaseToken);
+            if (trackToken) await setSingle(trackField, trackToken, [trackToken.replace(/-/g, " ")]);
+            await setSingle(classField, classToken);
+
+            const targetDateRaw = closed ? (issue.closed_at || null) : (issue.milestone?.due_on || null);
+            const targetDate = targetDateRaw ? new Date(targetDateRaw).toISOString().slice(0, 10) : null;
+            if (targetDateField && targetDate) {
+              await github.graphql(
+                `
+                mutation($projectId:ID!,$itemId:ID!,$fieldId:ID!,$date:Date!){
+                  updateProjectV2ItemFieldValue(input:{
+                    projectId:$projectId,
+                    itemId:$itemId,
+                    fieldId:$fieldId,
+                    value:{ date:$date }
+                  }){ projectV2Item{ id } }
+                }
+                `,
+                { projectId: project.id, itemId: item.id, fieldId: targetDateField.id, date: targetDate }
+              );
+            } else if (targetDateField) {
+              await github.graphql(
+                `
+                mutation($projectId:ID!,$itemId:ID!,$fieldId:ID!){
+                  clearProjectV2ItemFieldValue(input:{
+                    projectId:$projectId,
+                    itemId:$itemId,
+                    fieldId:$fieldId
+                  }){ projectV2Item{ id } }
+                }
+                `,
+                { projectId: project.id, itemId: item.id, fieldId: targetDateField.id }
+              );
+            }
+
+            core.info(`Issue #${issue.number} synced in project ${owner}#${projectNumber}.`);
