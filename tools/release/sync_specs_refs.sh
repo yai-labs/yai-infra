@@ -13,21 +13,22 @@ DO_CHECK=1
 usage() {
   cat <<'EOF'
 Usage:
-  tools/release/sync_specs_refs.sh --target <sha|ref> [options]
+  tools/release/sync_law_refs.sh --target <sha|ref> [options]
+  tools/release/sync_specs_refs.sh --target <sha|ref> [options]  # legacy alias
 
 Options:
-  --target <ref>   Required. Target commit/ref for deps/yai-specs (e.g. <sha>, origin/main).
+  --target <ref>   Required. Target commit/ref for deps/yai-law (legacy deps/yai-specs) (e.g. <sha>, origin/main).
   --manifest <p>   Manifest JSON path (default: docs/proof/.private/PP-FOUNDATION-0001/pp-foundation-0001.manifest.v1.json)
   --readme <p>     Proof pack README path (default: docs/proof/.private/PP-FOUNDATION-0001/README.md)
-  --no-fetch       Do not run git fetch origin in deps/yai-specs
+  --no-fetch       Do not run git fetch origin in the law repo path
   --dry-run        Print planned changes only
   --no-stage       Do not git add changed files
   --no-check       Do not run tools/bin/yai-proof-check after update
   -h, --help       Show this help
 
 Examples:
-  tools/release/sync_specs_refs.sh --target b96573d751cf12ff756c9643f4acf926743a1226
-  tools/release/sync_specs_refs.sh --target origin/main
+  tools/release/sync_law_refs.sh --target b96573d751cf12ff756c9643f4acf926743a1226
+  tools/release/sync_law_refs.sh --target origin/main
 EOF
 }
 
@@ -79,16 +80,28 @@ if [[ -z "$TARGET_REF" ]]; then
   exit 2
 fi
 
-SPECS_DIR="$ROOT/deps/yai-specs"
+LAW_DIR_REL="deps/yai-law"
+LEGACY_DIR_REL="deps/yai-specs"
+LAW_DIR="$ROOT/$LAW_DIR_REL"
+LEGACY_DIR="$ROOT/$LEGACY_DIR_REL"
+if [[ -d "$LAW_DIR/.git" || -f "$LAW_DIR/.git" ]]; then
+  SPECS_DIR="$LAW_DIR"
+  SPECS_REL="$LAW_DIR_REL"
+elif [[ -d "$LEGACY_DIR/.git" || -f "$LEGACY_DIR/.git" ]]; then
+  SPECS_DIR="$LEGACY_DIR"
+  SPECS_REL="$LEGACY_DIR_REL"
+else
+  echo "[sync-specs-refs] ERROR: missing git repo at $LAW_DIR_REL (legacy $LEGACY_DIR_REL)" >&2
+  exit 2
+fi
 MANIFEST="$ROOT/$MANIFEST_PATH"
 README="$ROOT/$README_PATH"
 
-[[ -d "$SPECS_DIR/.git" || -f "$SPECS_DIR/.git" ]] || { echo "[sync-specs-refs] ERROR: missing git repo at deps/yai-specs" >&2; exit 2; }
 [[ -f "$MANIFEST" ]] || { echo "[sync-specs-refs] ERROR: missing manifest: $MANIFEST_PATH" >&2; exit 2; }
 [[ -f "$README" ]] || { echo "[sync-specs-refs] ERROR: missing readme: $README_PATH" >&2; exit 2; }
 
 if [[ -n "$(git -C "$SPECS_DIR" status --porcelain)" ]]; then
-  echo "[sync-specs-refs] ERROR: deps/yai-specs has uncommitted changes; refuse to switch pin" >&2
+  echo "[sync-specs-refs] ERROR: $SPECS_REL has uncommitted changes; refuse to switch pin" >&2
   exit 2
 fi
 
@@ -97,7 +110,7 @@ if [[ $DO_FETCH -eq 1 ]]; then
 fi
 
 if ! TARGET_SHA="$(git -C "$SPECS_DIR" rev-parse "$TARGET_REF" 2>/dev/null)"; then
-  echo "[sync-specs-refs] ERROR: cannot resolve target ref in deps/yai-specs: $TARGET_REF" >&2
+  echo "[sync-specs-refs] ERROR: cannot resolve target ref in $SPECS_REL: $TARGET_REF" >&2
   exit 2
 fi
 
@@ -115,7 +128,7 @@ if [[ "$CURRENT_SHA" == "$TARGET_SHA" ]]; then
   echo "[sync-specs-refs] specs pin already aligned"
 else
   if [[ $DRY_RUN -eq 1 ]]; then
-    echo "[sync-specs-refs] DRY-RUN: would checkout deps/yai-specs to $TARGET_SHA"
+    echo "[sync-specs-refs] DRY-RUN: would checkout $SPECS_REL to $TARGET_SHA"
   else
     git -C "$SPECS_DIR" checkout "$TARGET_SHA"
   fi
@@ -140,19 +153,19 @@ obj = json.loads(manifest.read_text(encoding="utf-8"))
 obj.setdefault("pins", {}).setdefault("yai_specs", {})["commit"] = target
 manifest.write_text(json.dumps(obj, indent=2) + "\n", encoding="utf-8")
 
-# Update human README line (only the yai-specs commit token)
+# Update human README line (supports both legacy yai-specs and canonical yai-law tokens)
 text = readme.read_text(encoding="utf-8")
-pat = re.compile(r"(- `yai-specs`:.*?commit `)([0-9a-f]{40})(`.*)")
+pat = re.compile(r"(- `yai-(?:law|specs)`:.*?commit `)([0-9a-f]{40})(`.*)")
 new_text, n = pat.subn(r"\g<1>" + target + r"\g<3>", text, count=1)
 if n == 0:
-    raise SystemExit("[sync-specs-refs] ERROR: could not find yai-specs commit line in proof README")
+    raise SystemExit("[sync-specs-refs] ERROR: could not find yai-law/yai-specs commit line in proof README")
 readme.write_text(new_text, encoding="utf-8")
 PY
 fi
 
 if [[ $DO_STAGE -eq 1 && $DRY_RUN -eq 0 ]]; then
-  git add deps/yai-specs "$MANIFEST_PATH" "$README_PATH"
-  echo "[sync-specs-refs] staged: deps/yai-specs, $MANIFEST_PATH, $README_PATH"
+  git add "$SPECS_REL" "$MANIFEST_PATH" "$README_PATH"
+  echo "[sync-specs-refs] staged: $SPECS_REL, $MANIFEST_PATH, $README_PATH"
 fi
 
 if [[ $DO_CHECK -eq 1 && $DRY_RUN -eq 0 ]]; then

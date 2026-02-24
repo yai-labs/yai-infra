@@ -25,7 +25,8 @@ Provide stable, easy-to-remember commands for verify, gate, suite, diagnostics, 
 - `yai-dev-branch-sync`: create/check out the same branch across `yai`, `yai-cli`, `yai-mind`.
 - `yai-dev-pr-body`: alias of `yai-pr-body`.
 - `yai-dev-pr-check`: alias of `yai-pr-check`.
-- `yai-specs-sync`: sync `deps/yai-specs` pin and proof-pack refs (`manifest` + `README`).
+- `yai-law-sync`: canonical sync for law pin and proof-pack refs (`manifest` + `README`).
+- `yai-specs-sync`: compatibility alias (deprecated, forwards to `yai-law-sync`).
 - `yai-docs-schema-check`: validate docs frontmatter schema.
 - `yai-docs-graph`: generate/check docs traceability graph + lock.
 - `yai-agent-pack`: generate/check canonical machine-readable agent pack.
@@ -46,4 +47,5 @@ Provide stable, easy-to-remember commands for verify, gate, suite, diagnostics, 
 
 - `tools/bin/yai-dev-branch-sync --type chore --issue N/A --reason bootstrap --area governance --desc proof-pack-lock`
 
-- `tools/bin/yai-specs-sync --target origin/main`
+- `tools/bin/yai-law-sync --target origin/main`
+- `tools/bin/yai-specs-sync --target origin/main`  # deprecated alias

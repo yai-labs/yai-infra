@@ -39,3 +39,9 @@ Consumer repos should keep thin wrappers under their local `tools/bin/` that del
 - If a command fails in consumer repo, verify `YAI_INFRA_ROOT` resolution and run:
   - `tools/bin/yai-version`
   - `tools/bin/<command> --help`
+
+
+## Naming migration (specs -> law)
+
+- Canonical command: `tools/bin/yai-law-sync`
+- Compatibility alias: `tools/bin/yai-specs-sync` (deprecated)
