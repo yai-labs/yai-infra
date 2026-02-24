@@ -51,3 +51,19 @@ No governance logic should be duplicated in consumer workflows.
 
 - Canonical template residency: `docs/governance/github-template-residency.md`
 - Project automation policy: `docs/governance/project-automation-policy.md`
+
+## Project Workflows Baseline (GitHub Projects)
+
+For each governed project board (e.g. Program Delivery, Infra Governance), enable:
+
+- Auto-add sub-issues to project
+- Pull request linked to issue
+- Pull request merged
+- Item closed
+- Item added to project
+
+Field normalization remains action-driven via reusable project sync workflows:
+
+- `reusable-project-intake-sync.yml`
+- `reusable-project-status-sync.yml`
+- `reusable-project-backfill-sync.yml`
