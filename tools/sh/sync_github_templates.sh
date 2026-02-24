@@ -3,17 +3,32 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SRC_ROOT="${ROOT}/governance/templates/github/.github"
-DST_ROOT="${ROOT}/.github"
+MODE=""
+TARGET=""
 
 usage() {
   cat <<USAGE
 Usage:
-  tools/sh/sync_github_templates.sh sync   # write mirror from canonical source
-  tools/sh/sync_github_templates.sh check  # fail if drift is detected
+  tools/sh/sync_github_templates.sh sync --target <path-to-repo>
+  tools/sh/sync_github_templates.sh check --target <path-to-repo>
+
+Scope mirrored:
+- .github/ISSUE_TEMPLATE/**
+- .github/PULL_REQUEST_TEMPLATE/**
+- .github/PULL_REQUEST_TEMPLATE.md
+- .github/labeler.yml
+- .github/.managed-by-yai-infra
 USAGE
 }
 
-MODE="${1:-sync}"
+if [[ $# -lt 1 ]]; then
+  usage >&2
+  exit 2
+fi
+
+MODE="$1"
+shift
+
 case "${MODE}" in
   sync|check) ;;
   -h|--help|help)
@@ -27,11 +42,41 @@ case "${MODE}" in
     ;;
 esac
 
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --target)
+      if [[ $# -lt 2 ]]; then
+        echo "missing value for --target" >&2
+        exit 2
+      fi
+      TARGET="$2"
+      shift 2
+      ;;
+    *)
+      echo "unknown argument: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+if [[ -z "${TARGET}" ]]; then
+  echo "--target is required" >&2
+  usage >&2
+  exit 2
+fi
+
 if [[ ! -d "${SRC_ROOT}" ]]; then
   echo "canonical template source not found: ${SRC_ROOT}" >&2
   exit 1
 fi
 
+if [[ ! -d "${TARGET}" ]]; then
+  echo "target repository path not found: ${TARGET}" >&2
+  exit 1
+fi
+
+DST_ROOT="${TARGET%/}/.github"
 mkdir -p "${DST_ROOT}" "${DST_ROOT}/ISSUE_TEMPLATE" "${DST_ROOT}/PULL_REQUEST_TEMPLATE"
 
 sync_file() {
@@ -49,9 +94,9 @@ sync_file() {
       echo "missing mirror file: ${dst}" >&2
       exit 1
     fi
-    if ! diff -u "${src}" "${dst}" >/tmp/yai-infra-template-diff.txt; then
+    if ! diff -u "${src}" "${dst}" >/tmp/yai-template-diff.txt; then
       echo "template mirror drift detected for ${rel}" >&2
-      cat /tmp/yai-infra-template-diff.txt >&2
+      cat /tmp/yai-template-diff.txt >&2
       exit 1
     fi
   else
@@ -88,12 +133,13 @@ sync_dir() {
 }
 
 sync_file ".managed-by-yai-infra"
+sync_file "labeler.yml"
 sync_file "PULL_REQUEST_TEMPLATE.md"
 sync_dir "ISSUE_TEMPLATE"
 sync_dir "PULL_REQUEST_TEMPLATE"
 
 if [[ "${MODE}" == "sync" ]]; then
-  echo "templates synced from canonical source into .github"
+  echo "templates synced from canonical source into ${DST_ROOT}"
 else
-  echo "template mirror is aligned"
+  echo "template mirror is aligned (${DST_ROOT})"
 fi

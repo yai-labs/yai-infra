@@ -7,6 +7,7 @@ on:
       - '.github/ISSUE_TEMPLATE/**'
       - '.github/PULL_REQUEST_TEMPLATE/**'
       - '.github/PULL_REQUEST_TEMPLATE.md'
+      - '.github/labeler.yml'
       - '.github/.managed-by-yai-infra'
       - 'tools/sh/sync_github_templates.sh'
   push:
@@ -16,6 +17,7 @@ on:
       - '.github/ISSUE_TEMPLATE/**'
       - '.github/PULL_REQUEST_TEMPLATE/**'
       - '.github/PULL_REQUEST_TEMPLATE.md'
+      - '.github/labeler.yml'
       - '.github/.managed-by-yai-infra'
       - 'tools/sh/sync_github_templates.sh'
 
@@ -27,4 +29,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Verify canonical -> mirror alignment
-        run: tools/sh/sync_github_templates.sh check
+        run: tools/sh/sync_github_templates.sh check --target .
