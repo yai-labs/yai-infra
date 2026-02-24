@@ -35,10 +35,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          CANONICAL_ROOT=".infra-canonical/governance/templates/github"
 
           check_path() {
             local rel="$1"
-            local src=".infra-canonical/${rel}"
+            local src="${CANONICAL_ROOT}/${rel}"
             local dst="${rel}"
             if [[ ! -e "$src" ]]; then
               echo "Canonical template path missing in infra: $rel" >&2
