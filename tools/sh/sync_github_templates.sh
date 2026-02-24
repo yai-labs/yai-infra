@@ -2,29 +2,48 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-SRC="${ROOT}/governance/templates/github/.github"
-DST="${ROOT}/.github"
-MODE="apply"
+SRC_ROOT="${ROOT}/governance/templates/github/.github"
+DST_ROOT="${ROOT}/.github"
 
-if [[ "${1:-}" == "--check" ]]; then
-  MODE="check"
-fi
+usage() {
+  cat <<USAGE
+Usage:
+  tools/sh/sync_github_templates.sh sync   # write mirror from canonical source
+  tools/sh/sync_github_templates.sh check  # fail if drift is detected
+USAGE
+}
 
-if [[ ! -d "${SRC}" ]]; then
-  echo "canonical template source not found: ${SRC}" >&2
+MODE="${1:-sync}"
+case "${MODE}" in
+  sync|check) ;;
+  -h|--help|help)
+    usage
+    exit 0
+    ;;
+  *)
+    echo "invalid mode: ${MODE}" >&2
+    usage >&2
+    exit 2
+    ;;
+esac
+
+if [[ ! -d "${SRC_ROOT}" ]]; then
+  echo "canonical template source not found: ${SRC_ROOT}" >&2
   exit 1
 fi
 
-mkdir -p "${DST}/ISSUE_TEMPLATE" "${DST}/PULL_REQUEST_TEMPLATE"
+mkdir -p "${DST_ROOT}" "${DST_ROOT}/ISSUE_TEMPLATE" "${DST_ROOT}/PULL_REQUEST_TEMPLATE"
 
 sync_file() {
   local rel="$1"
-  local src="${SRC}/${rel}"
-  local dst="${DST}/${rel}"
+  local src="${SRC_ROOT}/${rel}"
+  local dst="${DST_ROOT}/${rel}"
+
   if [[ ! -f "${src}" ]]; then
     echo "missing source file: ${src}" >&2
     exit 1
   fi
+
   if [[ "${MODE}" == "check" ]]; then
     if [[ ! -f "${dst}" ]]; then
       echo "missing mirror file: ${dst}" >&2
@@ -42,12 +61,14 @@ sync_file() {
 
 sync_dir() {
   local rel="$1"
-  local src_dir="${SRC}/${rel}"
-  local dst_dir="${DST}/${rel}"
+  local src_dir="${SRC_ROOT}/${rel}"
+  local dst_dir="${DST_ROOT}/${rel}"
+
   if [[ ! -d "${src_dir}" ]]; then
     echo "missing source dir: ${src_dir}" >&2
     exit 1
   fi
+
   mkdir -p "${dst_dir}"
 
   while IFS= read -r -d '' src_file; do
@@ -66,11 +87,12 @@ sync_dir() {
   fi
 }
 
+sync_file ".managed-by-yai-infra"
 sync_file "PULL_REQUEST_TEMPLATE.md"
 sync_dir "ISSUE_TEMPLATE"
 sync_dir "PULL_REQUEST_TEMPLATE"
 
-if [[ "${MODE}" == "apply" ]]; then
+if [[ "${MODE}" == "sync" ]]; then
   echo "templates synced from canonical source into .github"
 else
   echo "template mirror is aligned"

@@ -12,5 +12,5 @@ Repository mirror files under `.github/*` are generated from this canonical sour
 
 Sync/check:
 
-- apply mirror update: `tools/sh/sync_github_templates.sh`
-- verify no drift: `tools/sh/sync_github_templates.sh --check`
+- sync mirror: `tools/sh/sync_github_templates.sh sync`
+- verify no drift: `tools/sh/sync_github_templates.sh check`
