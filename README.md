@@ -1,6 +1,9 @@
-# YAI Infra - Factory & Governance Toolkit
+# YAI Infra - Factory and Governance Toolkit
 
 `yai-infra` is the open factory window for YAI: the canonical place for standards, automation, and enforcement across the YAI ecosystem.
+
+**Product bundle:** `yai` + `yai-cli` + `yai-law`  
+`yai-infra` is not shipped as product - it is the open factory window.
 
 It exists so contributors and reviewers can see exactly how we work, and so all repos can consume a single, consistent governance toolchain.
 
