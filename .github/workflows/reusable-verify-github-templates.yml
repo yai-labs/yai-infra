@@ -88,6 +88,7 @@ jobs:
           check_path ".github/ISSUE_TEMPLATE"
           check_path ".github/PULL_REQUEST_TEMPLATE"
           check_path ".github/PULL_REQUEST_TEMPLATE.md"
+          check_path ".github/labeler.yml"
           check_path ".github/.managed-by-yai-infra"
 
           echo "GitHub templates are aligned with infra canonical."

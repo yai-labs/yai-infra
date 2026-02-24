@@ -10,6 +10,7 @@ Mirror files used by GitHub UX are generated from canonical source:
 - `.github/ISSUE_TEMPLATE/*`
 - `.github/PULL_REQUEST_TEMPLATE/*`
 - `.github/PULL_REQUEST_TEMPLATE.md`
+- `.github/labeler.yml`
 - `.github/.managed-by-yai-infra`
 
 Consumer repositories may keep local copies only as mirrors for GitHub UX
@@ -18,5 +19,5 @@ against `yai-infra` canonical templates.
 
 Local sync/check commands:
 
-- `tools/sh/sync_github_templates.sh sync`
-- `tools/sh/sync_github_templates.sh check`
+- `tools/sh/sync_github_templates.sh sync --target <path-to-repo>`
+- `tools/sh/sync_github_templates.sh check --target <path-to-repo>`
