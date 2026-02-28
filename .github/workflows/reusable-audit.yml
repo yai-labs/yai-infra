@@ -1,0 +1,21 @@
+name: "Audit: Workspace Integrity"
+
+on:
+  workflow_call:
+
+jobs:
+  check-law:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          # Importante: serve un token se i repo sono privati
+          token: ${{ secrets.YAI_INFRA_TOKEN || github.token }}
+
+      - name: Verify Single Law Residency
+        run: |
+          # Assumendo che yai-infra venga montato o sia presente
+          # Se lo script è nel repo infra stesso, lo chiamiamo così:
+          chmod +x ./tools/validate/check_single_law.sh
+          ./tools/validate/check_single_law.sh .
