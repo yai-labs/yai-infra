@@ -114,9 +114,9 @@ if [ ! -x "$PIN_SCRIPT" ]; then
   exit 1
 fi
 
-EXPECTED_SPECS_SHA="$(git -C deps/yai-specs rev-parse HEAD 2>/dev/null || true)"
+EXPECTED_SPECS_SHA="$(git -C deps/yai-law rev-parse HEAD 2>/dev/null || true)"
 if ! echo "$EXPECTED_SPECS_SHA" | grep -Eq "^[0-9a-f]{40}$"; then
-  echo "ERROR: cannot resolve deps/yai-specs pin for EXPECTED_SPECS_SHA" >&2
+  echo "ERROR: cannot resolve deps/yai-law pin for EXPECTED_SPECS_SHA" >&2
   exit 1
 fi
 

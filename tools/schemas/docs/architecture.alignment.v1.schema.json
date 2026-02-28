@@ -69,7 +69,7 @@
             "type": "array",
             "items": {
               "type": "string",
-              "pattern": "^deps/yai-specs/.+"
+              "pattern": "^deps/yai-law/.+"
             }
           }
         },
@@ -123,7 +123,7 @@
             "type": "array",
             "items": {
               "type": "string",
-              "pattern": "^deps/yai-specs/.+"
+              "pattern": "^deps/yai-law/.+"
             }
           },
           "is_planned_marker": {

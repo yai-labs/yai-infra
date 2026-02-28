@@ -140,7 +140,7 @@ def _parse_component_doc(path: Path) -> dict[str, Any]:
         "adr_refs": _extract_refs_by_prefix(traceability, ("docs/design/adr/",)),
         "runbook_refs": _extract_refs_by_prefix(traceability, ("docs/runbooks/",)),
         "mp_refs": _extract_refs_by_prefix(traceability, ("docs/milestone-packs/",)),
-        "l0_refs": _extract_refs_by_prefix(traceability, ("deps/yai-specs/",)),
+        "l0_refs": _extract_refs_by_prefix(traceability, ("deps/yai-law/",)),
     }
 
 
@@ -190,7 +190,7 @@ def _render_traceability_md(trace_rows: list[dict[str, Any]]) -> str:
         "revision: 1",
         "owner: architecture",
         "law_refs:",
-        "  - deps/yai-specs/contracts/invariants/I-001-traceability.md",
+        "  - deps/yai-law/contracts/invariants/I-001-traceability.md",
         "---",
         "",
         "# Architecture Traceability",
@@ -382,7 +382,7 @@ def build_alignment_snapshot() -> tuple[dict[str, Any], str, list[str]]:
             errors.append(f"{rel}: absolute markdown link not allowed: {m.group(1)}")
 
         # validate all listed ADR/Runbook/MP/L0 refs anywhere in architecture docs
-        for ref in _extract_refs_by_prefix(txt, ("docs/design/adr/", "docs/runbooks/", "docs/milestone-packs/", "deps/yai-specs/")):
+        for ref in _extract_refs_by_prefix(txt, ("docs/design/adr/", "docs/runbooks/", "docs/milestone-packs/", "deps/yai-law/")):
             if not _path_exists(ref):
                 errors.append(f"{rel}: referenced path not found: {ref}")
 
