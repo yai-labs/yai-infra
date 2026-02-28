@@ -27,7 +27,7 @@ for bin in "${EXPECTED_BINS[@]}"; do
   [ -f "$BIN_DIST/$bin" ] || fail "missing dist binary $BIN_DIST/$bin. Run 'make dist'."
 done
 
-[ -d "$ROOT_DIR/deps/yai-specs" ] || fail "missing deps/yai-specs. Run 'git submodule update --init --recursive'."
+[ -d "$ROOT_DIR/deps/yai-law" ] || fail "missing deps/yai-law. Run 'git submodule update --init --recursive'."
 
 [ -f "$CLI_PIN_FILE" ] || fail "missing CLI pin file $CLI_PIN_FILE"
 CLI_PIN_SHA="$(awk -F= '/^cli_sha=/{print $2}' "$CLI_PIN_FILE" | tr -d '[:space:]')"
@@ -71,13 +71,13 @@ git clone "$YAI_CLI_REPO" "$CLI_SRC_DIR"
 git -C "$CLI_SRC_DIR" checkout "$CLI_PIN_SHA" || fail "failed to checkout pinned yai-cli SHA $CLI_PIN_SHA"
 
 # Force specs parity with this runtime bundle pin to avoid drift.
-rm -rf "$CLI_SRC_DIR/deps/yai-specs"
-mkdir -p "$CLI_SRC_DIR/deps/yai-specs"
+rm -rf "$CLI_SRC_DIR/deps/yai-law"
+mkdir -p "$CLI_SRC_DIR/deps/yai-law"
 (
-  cd "$ROOT_DIR/deps/yai-specs"
+  cd "$ROOT_DIR/deps/yai-law"
   tar --exclude='.git' -cf - .
 ) | (
-  cd "$CLI_SRC_DIR/deps/yai-specs"
+  cd "$CLI_SRC_DIR/deps/yai-law"
   tar -xf -
 )
 
@@ -106,7 +106,7 @@ STAGE_DIR="$FINAL_STAGE_DIR"
 
 mkdir -p "$STAGE_DIR/specs"
 (
-  cd "$ROOT_DIR/deps/yai-specs"
+  cd "$ROOT_DIR/deps/yai-law"
   tar --exclude='.git' -cf - .
 ) | (
   cd "$STAGE_DIR/specs"
@@ -130,7 +130,7 @@ Optional:
 - \`./bin/yai-boot\`
 BUNDLE_INSTALL
 
-SPECS_COMMIT="$(git -C "$ROOT_DIR" submodule status -- deps/yai-specs | awk '{print $1}' | sed 's/^[-+]//')"
+SPECS_COMMIT="$(git -C "$ROOT_DIR" submodule status -- deps/yai-law | awk '{print $1}' | sed 's/^[-+]//')"
 if [ -z "$SPECS_COMMIT" ]; then
   SPECS_COMMIT="unknown"
 fi

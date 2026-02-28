@@ -3,8 +3,8 @@ set -euo pipefail
 
 INFRA_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 CORE_ROOT="${YAI_CORE_ROOT:-$INFRA_ROOT}"
-SPECS_CONTRACTS="$CORE_ROOT/deps/yai-specs/contracts"
-FORMAL="$CORE_ROOT/deps/yai-specs/formal"
+SPECS_CONTRACTS="$CORE_ROOT/deps/yai-law/contracts"
+FORMAL="$CORE_ROOT/deps/yai-law/formal"
 KERNEL="$CORE_ROOT/kernel"
 
 TLA_JAR="${TLA_JAR:-$HOME/Developer/tools/tla/tla2tools.jar}"

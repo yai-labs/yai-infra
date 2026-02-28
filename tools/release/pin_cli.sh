@@ -38,7 +38,7 @@ ensure_commit_exists() {
 
 extract_specs_gitlink() {
   local repo_dir="$1"
-  git -C "$repo_dir" ls-tree -d HEAD deps/yai-specs | awk '{print $3}' | head -n1
+  git -C "$repo_dir" ls-tree -d HEAD deps/yai-law | awk '{print $3}' | head -n1
 }
 
 resolve_from_sha() {
@@ -97,7 +97,7 @@ verify_expected_specs_alignment() {
   local cli_specs_sha
   cli_specs_sha="$(extract_specs_gitlink "$repo_dir")"
   if ! is_sha40 "$cli_specs_sha"; then
-    echo "ERROR: could not resolve deps/yai-specs gitlink for resolved CLI sha $cli_sha" >&2
+    echo "ERROR: could not resolve deps/yai-law gitlink for resolved CLI sha $cli_sha" >&2
     exit 1
   fi
   if [ "$cli_specs_sha" != "$expected" ]; then

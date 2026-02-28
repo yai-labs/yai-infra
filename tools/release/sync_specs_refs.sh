@@ -17,7 +17,7 @@ Usage:
   tools/release/sync_specs_refs.sh --target <sha|ref> [options]  # legacy alias
 
 Options:
-  --target <ref>   Required. Target commit/ref for deps/yai-law (legacy deps/yai-specs) (e.g. <sha>, origin/main).
+  --target <ref>   Required. Target commit/ref for deps/yai-law (legacy deps/yai-law) (e.g. <sha>, origin/main).
   --manifest <p>   Manifest JSON path (default: docs/proof/.private/PP-FOUNDATION-0001/pp-foundation-0001.manifest.v1.json)
   --readme <p>     Proof pack README path (default: docs/proof/.private/PP-FOUNDATION-0001/README.md)
   --no-fetch       Do not run git fetch origin in the law repo path
@@ -81,7 +81,7 @@ if [[ -z "$TARGET_REF" ]]; then
 fi
 
 LAW_DIR_REL="deps/yai-law"
-LEGACY_DIR_REL="deps/yai-specs"
+LEGACY_DIR_REL="deps/yai-law"
 LAW_DIR="$ROOT/$LAW_DIR_REL"
 LEGACY_DIR="$ROOT/$LEGACY_DIR_REL"
 if [[ -d "$LAW_DIR/.git" || -f "$LAW_DIR/.git" ]]; then
@@ -135,7 +135,7 @@ else
 fi
 
 if [[ $DRY_RUN -eq 1 ]]; then
-  echo "[sync-specs-refs] DRY-RUN: would update $MANIFEST_PATH pins.yai_specs.commit=$TARGET_SHA"
+  echo "[sync-specs-refs] DRY-RUN: would update $MANIFEST_PATH pins.yai_law.commit=$TARGET_SHA"
   echo "[sync-specs-refs] DRY-RUN: would update specs commit line in $README_PATH"
 else
   python3 - "$MANIFEST" "$README" "$TARGET_SHA" <<'PY'
@@ -150,7 +150,7 @@ target = sys.argv[3]
 
 # Update manifest pin
 obj = json.loads(manifest.read_text(encoding="utf-8"))
-obj.setdefault("pins", {}).setdefault("yai_specs", {})["commit"] = target
+obj.setdefault("pins", {}).setdefault("yai_law", {})["commit"] = target
 manifest.write_text(json.dumps(obj, indent=2) + "\n", encoding="utf-8")
 
 # Update human README line (supports both legacy yai-specs and canonical yai-law tokens)

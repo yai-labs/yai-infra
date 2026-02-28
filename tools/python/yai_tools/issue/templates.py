@@ -74,7 +74,7 @@ def render_milestone_body(track: str, phase: str, rb_anchor: str, mp_id: str, ob
 - `{mp_id}`
 
 ## Evidence Requirements
-- [ ] Link all phase PRs (core/docs/specs/cli as needed)
+- [ ] Link all phase PRs (core/docs/contracts/cli as needed)
 - [ ] Attach gate results (CI logs / command output)
 - [ ] Include proof-pack or verification artifacts (if applicable)
 - [ ] Declare explicit close decision in MP Closure issue

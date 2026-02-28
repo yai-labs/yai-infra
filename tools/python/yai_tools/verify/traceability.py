@@ -160,11 +160,11 @@ def check_adr(path: Path) -> CheckResult:
 
     law_refs = ensure_list(fm.get("law_refs"))
     if len(law_refs) == 0:
-        errs.append("frontmatter `law_refs` must be non-empty and point to deps/yai-specs/...")
+        errs.append("frontmatter `law_refs` must be non-empty and point to deps/yai-law/...")
     else:
         for r in law_refs:
-            if not r.startswith("deps/yai-specs/"):
-                errs.append(f"law_ref must start with `deps/yai-specs/` but got: {r}")
+            if not r.startswith("deps/yai-law/"):
+                errs.append(f"law_ref must start with `deps/yai-law/` but got: {r}")
             rp = (REPO_ROOT / r).resolve()
             if not rp.exists():
                 errs.append(f"law_ref path not found: {r}")
@@ -245,11 +245,11 @@ def check_mp(path: Path) -> CheckResult:
 
     spec_anchors = ensure_list(fm.get("spec_anchors"))
     if len(spec_anchors) == 0:
-        errs.append("frontmatter `spec_anchors` must be non-empty and point to deps/yai-specs/...")
+        errs.append("frontmatter `spec_anchors` must be non-empty and point to deps/yai-law/...")
 
     for s in spec_anchors:
-        if not s.startswith("deps/yai-specs/"):
-            errs.append(f"spec_anchor must start with deps/yai-specs/ but got: {s}")
+        if not s.startswith("deps/yai-law/"):
+            errs.append(f"spec_anchor must start with deps/yai-law/ but got: {s}")
         sp = (REPO_ROOT / s).resolve()
         if not sp.exists():
             errs.append(f"spec_anchor path not found: {s}")

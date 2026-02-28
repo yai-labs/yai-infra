@@ -85,7 +85,7 @@ def validate_schema(doc: Dict[str, Any]) -> List[str]:
     if excluded_changes and "yai-specs" not in excluded_changes:
         errs.append("program_scope.excluded_changes should include 'yai-specs'")
 
-    for repo_key in ["yai", "yai_specs", "yai_cli", "yai_mind"]:
+    for repo_key in ["yai", "yai_law", "yai_cli", "yai_mind"]:
         require_str(doc, ["pins", repo_key, "commit"], errs)
 
     existing = require_list(doc, ["evidence", "existing"], errs)
@@ -188,13 +188,13 @@ def validate_pins(doc: Dict[str, Any], manifest: Path) -> List[str]:
     cli_ref = read_cli_ref(REPO_ROOT / "deps" / "yai-cli.ref")
 
     declared_yai = str(get_nested(doc, ["pins", "yai", "commit"]) or "")
-    declared_specs = str(get_nested(doc, ["pins", "yai_specs", "commit"]) or "")
+    declared_specs = str(get_nested(doc, ["pins", "yai_law", "commit"]) or "")
     declared_cli = str(get_nested(doc, ["pins", "yai_cli", "commit"]) or "")
     declared_mind = str(get_nested(doc, ["pins", "yai_mind", "commit"]) or "")
 
     for label, sha in [
         ("pins.yai.commit", declared_yai),
-        ("pins.yai_specs.commit", declared_specs),
+        ("pins.yai_law.commit", declared_specs),
         ("pins.yai_cli.commit", declared_cli),
         ("pins.yai_mind.commit", declared_mind),
     ]:
@@ -206,7 +206,7 @@ def validate_pins(doc: Dict[str, Any], manifest: Path) -> List[str]:
 
     if SHA40_RE.match(declared_specs) and declared_specs != specs_head:
         errs.append(
-            f"pins.yai_specs.commit mismatch (manifest={declared_specs[:12]} actual={specs_head[:12]})"
+            f"pins.yai_law.commit mismatch (manifest={declared_specs[:12]} actual={specs_head[:12]})"
         )
 
     if SHA40_RE.match(declared_cli) and declared_cli != cli_ref:
@@ -263,7 +263,7 @@ def main() -> int:
     print("[proof-pack] PASS")
     print(f"manifest={manifest.relative_to(REPO_ROOT).as_posix()}")
     print(f"yai_commit={get_nested(doc, ['pins', 'yai', 'commit'])}")
-    print(f"yai_specs_commit={get_nested(doc, ['pins', 'yai_specs', 'commit'])}")
+    print(f"yai_law_commit={get_nested(doc, ['pins', 'yai_law', 'commit'])}")
     print(f"yai_cli_commit={get_nested(doc, ['pins', 'yai_cli', 'commit'])}")
     print(f"yai_mind_commit={get_nested(doc, ['pins', 'yai_mind', 'commit'])}")
     return 0

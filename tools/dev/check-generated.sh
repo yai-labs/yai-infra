@@ -3,7 +3,7 @@ set -euo pipefail
 
 INFRA_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CORE_ROOT="${YAI_CORE_ROOT:-$INFRA_ROOT}"
-SPEC="$CORE_ROOT/deps/yai-specs/specs/vault/schema/vault_abi.json"
+SPEC="$CORE_ROOT/deps/yai-law/contracts/vault/schema/vault_abi.json"
 GEN="$INFRA_ROOT/tools/dev/gen-vault-abi"
 
 TMP_DIR="$(mktemp -d)"
@@ -18,16 +18,16 @@ strip_generated() {
   sed -e '/^\/\* Generated:/d' -e '/^\\\* Generated:/d'
 }
 
-DIFF_A=$(diff -u <(strip_generated < "$CORE_ROOT/deps/yai-specs/specs/vault/include/yai_vault_abi.h") \
-                 <(strip_generated < "$TMP_DIR/deps/yai-specs/specs/vault/include/yai_vault_abi.h") || true)
+DIFF_A=$(diff -u <(strip_generated < "$CORE_ROOT/deps/yai-law/contracts/vault/include/yai_vault_abi.h") \
+                 <(strip_generated < "$TMP_DIR/deps/yai-law/contracts/vault/include/yai_vault_abi.h") || true)
 if [[ -n "$DIFF_A" ]]; then
   echo "ERROR: yai_vault_abi.h drift"
   echo "$DIFF_A"
   exit 1
 fi
 
-DIFF_B=$(diff -u <(strip_generated < "$CORE_ROOT/deps/yai-specs/formal/tla/LAW_IDS.tla") \
-                 <(strip_generated < "$TMP_DIR/deps/yai-specs/formal/tla/LAW_IDS.tla") || true)
+DIFF_B=$(diff -u <(strip_generated < "$CORE_ROOT/deps/yai-law/formal/tla/LAW_IDS.tla") \
+                 <(strip_generated < "$TMP_DIR/deps/yai-law/formal/tla/LAW_IDS.tla") || true)
 if [[ -n "$DIFF_B" ]]; then
   echo "ERROR: LAW_IDS.tla drift"
   echo "$DIFF_B"

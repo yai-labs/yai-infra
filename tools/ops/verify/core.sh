@@ -3,8 +3,8 @@ set -euo pipefail
 
 INFRA_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 CORE_ROOT="${YAI_CORE_ROOT:-$INFRA_ROOT}"
-SPECS_CONTRACTS="$CORE_ROOT/deps/yai-specs/contracts"
-FORMAL="$CORE_ROOT/deps/yai-specs/formal"
+SPECS_CONTRACTS="$CORE_ROOT/deps/yai-law/contracts"
+FORMAL="$CORE_ROOT/deps/yai-law/formal"
 TLA_JAR="${TLA_JAR:-$HOME/Developer/tools/tla/tla2tools.jar}"
 
 echo "=== INFRA ROOT: $INFRA_ROOT"
@@ -30,7 +30,7 @@ python3 - <<'PY'
 import json, sys
 from pathlib import Path
 
-base = Path("deps/yai-specs/specs/cli/schema")
+base = Path("deps/yai-law/contracts/cli/schema")
 schema = json.loads((base / "commands.schema.json").read_text())
 data = json.loads((base / "commands.v1.json").read_text())
 
@@ -51,12 +51,12 @@ PY
 
 echo "=== COMPLIANCE BASELINE CHECK"
 compliance_files=(
-  "deps/yai-specs/contracts/extensions/compliance/C-001-compliance-context.md"
-  "deps/yai-specs/compliance/schema/compliance.context.v1.json"
-  "deps/yai-specs/compliance/packs/gdpr-eu/2026Q1/pack.meta.json"
-  "deps/yai-specs/compliance/packs/gdpr-eu/2026Q1/taxonomy.data_classes.json"
-  "deps/yai-specs/compliance/packs/gdpr-eu/2026Q1/taxonomy.purposes.json"
-  "deps/yai-specs/compliance/packs/gdpr-eu/2026Q1/taxonomy.legal_basis.json"
+  "deps/yai-law/contracts/extensions/compliance/C-001-compliance-context.md"
+  "deps/yai-law/compliance/schema/compliance.context.v1.json"
+  "deps/yai-law/compliance/packs/gdpr-eu/2026Q1/pack.meta.json"
+  "deps/yai-law/compliance/packs/gdpr-eu/2026Q1/taxonomy.data_classes.json"
+  "deps/yai-law/compliance/packs/gdpr-eu/2026Q1/taxonomy.purposes.json"
+  "deps/yai-law/compliance/packs/gdpr-eu/2026Q1/taxonomy.legal_basis.json"
 )
 for f in "${compliance_files[@]}"; do
   if [[ ! -f "$f" ]]; then

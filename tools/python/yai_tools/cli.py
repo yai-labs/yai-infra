@@ -57,7 +57,7 @@ def _repo_root() -> str:
 
 
 def _safe_specs_sha(repo_root: str) -> str:
-    for rel in ("deps/yai-law", "deps/yai-specs"):
+    for rel in ("deps/yai-law", "deps/yai-law"):
         try:
             out = subprocess.run(
                 ["git", "-C", f"{repo_root}/{rel}", "rev-parse", "HEAD"],

@@ -85,7 +85,7 @@ CREATED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
   printf '    "git_sha": "%s"\n' "$CLI_GIT_SHA"
   printf '  },\n'
   printf '  "specs": {\n'
-  printf '    "path": "deps/yai-specs",\n'
+  printf '    "path": "deps/yai-law",\n'
   printf '    "git_sha": "%s"\n' "$SPECS_GIT_SHA"
   printf '  },\n'
   printf '  "artifacts": [\n'
