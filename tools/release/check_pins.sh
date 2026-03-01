@@ -174,8 +174,16 @@ if [[ -n "$SDK_SHA" ]]; then
   git clone --no-checkout "$YAI_SDK_REPO" "$SDK_TMP" >/dev/null 2>&1 || fail 3 "cannot clone yai-sdk from $YAI_SDK_REPO"
   git -C "$SDK_TMP" fetch --depth 1 origin "$SDK_SHA" >/dev/null 2>&1 || fail 3 "cannot fetch yai-sdk ref commit $SDK_SHA from $YAI_SDK_REPO"
   git -C "$SDK_TMP" checkout -q "$SDK_SHA" >/dev/null 2>&1 || fail 3 "cannot checkout yai-sdk ref commit $SDK_SHA"
-  SDK_LAW_PIN="$(extract_gitlink "$SDK_TMP" HEAD "deps/yai-law")"
-  echo "$SDK_LAW_PIN" | grep -Eq '^[0-9a-f]{40}$' || fail 3 "could not resolve yai-sdk law pin from gitlink deps/yai-law"
+
+  # Preferred: SDK declares law pin without submodule recursion (deps/yai-law.ref)
+  SDK_LAW_PIN="$(read_ref_sha "$SDK_TMP/deps/yai-law.ref" "law_sha" || true)"
+
+  # Fallback: legacy SDKs may still vendor yai-law as gitlink
+  if [[ -z "$SDK_LAW_PIN" ]]; then
+    SDK_LAW_PIN="$(extract_gitlink "$SDK_TMP" HEAD "deps/yai-law" || true)"
+  fi
+
+  echo "$SDK_LAW_PIN" | grep -Eq '^[0-9a-f]{40}$' || fail 3 "could not resolve yai-sdk law pin (expected deps/yai-law.ref or gitlink deps/yai-law)"
 fi
 
 # ------------------------
